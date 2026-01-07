@@ -91,6 +91,26 @@ const SVEReport: React.FC = () => {
       return allPatients.filter(p => p.company === selectedCompanyName);
   }, [allPatients, selectedCompanyName]);
 
+  // Helper to filter patients active in a specific month
+  const getPatientsActiveInMonth = (monthIdx: number, year: number) => {
+    const reportLastDayOfMonth = new Date(year, monthIdx + 1, 0);
+    return patientsInScope.filter(p => {
+      if (!p.entryDate) return true; // Si no hay fecha de ingreso, asumimos que es histórico
+      const entry = new Date(p.entryDate);
+      return entry <= reportLastDayOfMonth;
+    });
+  };
+
+  const getAgeGroupStatsForList = (list: Patient[]) => {
+    const groups: Record<string, number> = { '18-25': 0, '26-35': 0, '36-45': 0, '46-55': 0, '55+': 0 };
+    list.forEach(p => {
+        const group = getAgeGroup(calculateAge(p.birthDate));
+        if (groups[group] !== undefined) groups[group]++;
+        else groups['55+']++;
+    });
+    return groups;
+  };
+
   const jobDistribution = useMemo(() => {
     const distribution: Record<string, number> = {};
     patientsInScope.forEach(p => {
@@ -159,16 +179,6 @@ const SVEReport: React.FC = () => {
         eo: acc.eo + curr.eo
     }), { ac: 0, at: 0, ec: 0, eo: 0 });
   }, [annualOccurrenceSummary]);
-
-  const ageGroupStats = useMemo(() => {
-    const groups: Record<string, number> = { '18-25': 0, '26-35': 0, '36-45': 0, '46-55': 0, '55+': 0 };
-    patientsInScope.forEach(p => {
-        const group = getAgeGroup(calculateAge(p.birthDate));
-        if (groups[group] !== undefined) groups[group]++;
-        else groups['55+']++;
-    });
-    return groups;
-  }, [patientsInScope]);
 
   const examResults = useMemo(() => {
     const data = {
@@ -246,7 +256,7 @@ const SVEReport: React.FC = () => {
     <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-6 border-t border-slate-200">
         <div className="text-center">
             <div className="h-16 border-b border-slate-300 mb-2 flex items-end justify-center pb-1">
-               {/* Optional signature visual space */}
+               {/* Espacio para firma */}
             </div>
             {currentDoctor ? (
               <div className="space-y-0.5">
@@ -458,15 +468,18 @@ const SVEReport: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {getQuarterMonths(selectedQuarter).map(m => (
-                            <tr key={m}>
-                                <td className="font-bold">{getMonthName(m).toUpperCase()}</td>
-                                <td className="text-center font-bold">{patientsInScope.length}</td>
-                                <td className="text-center">{patientsInScope.filter(p => p.gender === 'Masculino').length}</td>
-                                <td className="text-center">{patientsInScope.filter(p => p.gender === 'Femenino').length}</td>
-                                <td className="text-center">{patientsInScope.filter(p => p.hasDisability).length}</td>
-                            </tr>
-                        ))}
+                        {getQuarterMonths(selectedQuarter).map(m => {
+                            const activeInMonth = getPatientsActiveInMonth(m, selectedYear);
+                            return (
+                                <tr key={m}>
+                                    <td className="font-bold">{getMonthName(m).toUpperCase()}</td>
+                                    <td className="text-center font-bold">{activeInMonth.length}</td>
+                                    <td className="text-center">{activeInMonth.filter(p => p.gender === 'Masculino').length}</td>
+                                    <td className="text-center">{activeInMonth.filter(p => p.gender === 'Femenino').length}</td>
+                                    <td className="text-center">{activeInMonth.filter(p => p.hasDisability).length}</td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
 
@@ -483,16 +496,20 @@ const SVEReport: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {getQuarterMonths(selectedQuarter).map(m => (
-                            <tr key={m}>
-                                <td className="font-bold">{getMonthName(m).toUpperCase()}</td>
-                                <td className="text-center font-bold">{ageGroupStats['18-25']}</td>
-                                <td className="text-center font-bold">{ageGroupStats['26-35']}</td>
-                                <td className="text-center font-bold">{ageGroupStats['36-45']}</td>
-                                <td className="text-center font-bold">{ageGroupStats['46-55']}</td>
-                                <td className="text-center font-bold">{ageGroupStats['55+']}</td>
-                            </tr>
-                        ))}
+                        {getQuarterMonths(selectedQuarter).map(m => {
+                            const activeInMonth = getPatientsActiveInMonth(m, selectedYear);
+                            const monthlyAgeStats = getAgeGroupStatsForList(activeInMonth);
+                            return (
+                                <tr key={m}>
+                                    <td className="font-bold">{getMonthName(m).toUpperCase()}</td>
+                                    <td className="text-center font-bold">{monthlyAgeStats['18-25']}</td>
+                                    <td className="text-center font-bold">{monthlyAgeStats['26-35']}</td>
+                                    <td className="text-center font-bold">{monthlyAgeStats['36-45']}</td>
+                                    <td className="text-center font-bold">{monthlyAgeStats['46-55']}</td>
+                                    <td className="text-center font-bold">{monthlyAgeStats['55+']}</td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
                 <SubscriptionTable type="full" />
