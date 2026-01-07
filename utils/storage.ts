@@ -1,4 +1,5 @@
-import { Patient, MedicalAttention, Prescription, Doctor, Company, AppUser, JobTitle, Appointment } from '../types';
+
+import { Patient, MedicalAttention, Prescription, Doctor, Company, AppUser, JobTitle, Appointment, Department } from '../types';
 
 const STORAGE_KEY_PATIENTS = 'alex_consulting_patients';
 const STORAGE_KEY_ATTENTIONS = 'alex_consulting_attentions';
@@ -7,6 +8,7 @@ const STORAGE_KEY_DOCTORS = 'alex_consulting_doctors';
 const STORAGE_KEY_COMPANIES = 'alex_consulting_companies';
 const STORAGE_KEY_USERS = 'alex_consulting_users';
 const STORAGE_KEY_JOB_TITLES = 'alex_consulting_job_titles';
+const STORAGE_KEY_DEPARTMENTS = 'alex_consulting_departments';
 const STORAGE_KEY_APPOINTMENTS = 'alex_consulting_appointments';
 
 // --- DATA MANAGEMENT (WEB VERSION) ---
@@ -21,6 +23,7 @@ export const exportAllData = (): string => {
     STORAGE_KEY_COMPANIES,
     STORAGE_KEY_USERS,
     STORAGE_KEY_JOB_TITLES,
+    STORAGE_KEY_DEPARTMENTS,
     STORAGE_KEY_APPOINTMENTS
   ];
 
@@ -356,6 +359,37 @@ export const updateJobTitle = (id: string, data: Partial<JobTitle>): Promise<Job
 export const deleteJobTitle = (id: string): Promise<void> => {
   return new Promise(resolve => {
     deleteItemInList<JobTitle>(STORAGE_KEY_JOB_TITLES, id);
+    resolve();
+  });
+};
+
+// --- DEPARTMENTS (DEPARTAMENTOS) ---
+export const getDepartments = (): Promise<Department[]> => {
+  return new Promise(resolve => setTimeout(() => resolve(getItems<Department>(STORAGE_KEY_DEPARTMENTS)), 100));
+};
+
+export const saveDepartment = (data: Omit<Department, 'id' | 'createdAt'>): Promise<Department> => {
+  return new Promise(resolve => {
+    setTimeout(() => {
+      const newItem: Department = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+      saveItem(STORAGE_KEY_DEPARTMENTS, newItem);
+      resolve(newItem);
+    }, 100);
+  });
+};
+
+export const updateDepartment = (id: string, data: Partial<Department>): Promise<Department> => {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      const updated = updateItemInList<Department>(STORAGE_KEY_DEPARTMENTS, id, data);
+      updated ? resolve(updated) : reject("Department not found");
+    }, 100);
+  });
+};
+
+export const deleteDepartment = (id: string): Promise<void> => {
+  return new Promise(resolve => {
+    deleteItemInList<Department>(STORAGE_KEY_DEPARTMENTS, id);
     resolve();
   });
 };

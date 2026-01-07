@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   FolderOpen, 
@@ -31,7 +32,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate }) => {
       label: 'Archivo', 
       icon: FolderOpen, 
       hasSubmenu: true,
-      subItems: ['Paciente', 'Medicos', 'Empresas', 'Usuarios', 'Historia Clínica', 'Cargos'] 
+      subItems: ['Paciente', 'Medicos', 'Empresas', 'Usuarios', 'Historia Clínica', 'Cargos', 'Departamento'] 
     },
     { id: 'atencion', label: 'Atención Médica', icon: Stethoscope },
     { id: 'citas', label: 'Citas', icon: Calendar },

@@ -11,6 +11,7 @@ import DoctorsManagement from './components/DoctorsManagement';
 import CompaniesManagement from './components/CompaniesManagement';
 import UsersManagement from './components/UsersManagement';
 import JobTitlesManagement from './components/JobTitlesManagement';
+import DepartmentsManagement from './components/DepartmentsManagement';
 import DiagnosticImpression from './components/DiagnosticImpression';
 import Appointments from './components/Appointments';
 import MedicalReportGenerator from './components/MedicalReportGenerator';
@@ -86,6 +87,8 @@ const App: React.FC = () => {
         return <UsersManagement />;
       case 'cargos': 
         return <JobTitlesManagement />;
+      case 'departamento':
+        return <DepartmentsManagement />;
       case 'historia-clínica':
         return <ClinicalHistory />;
       case 'atencion': 

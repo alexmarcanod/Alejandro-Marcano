@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   FileBarChart, Users, Stethoscope, Download, 
@@ -77,16 +78,9 @@ const Reports: React.FC = () => {
     return age;
   };
 
-  const extractMainPathology = (diagnosis: string): string => {
-    if (!diagnosis) return "Sin Diagnóstico";
-    // Used primarily for Stats grouping
-    const firstLine = diagnosis.split('\n')[0].trim();
-    return firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine;
-  };
-
   // --- Data Processing & Filtering ---
 
-  // 1. Filter Attentions by Date FIRST
+  // 1. Filter Attenciones by Date FIRST
   const dateFilteredAttentions = useMemo(() => {
     return rawAttentions.filter(att => {
       const attDate = att.attentionDate; // YYYY-MM-DD
@@ -102,7 +96,7 @@ const Reports: React.FC = () => {
     });
   }, [rawAttentions, filterType, dateStart, dateEnd, month]);
 
-  // 2. Merge Patient Data AND Filter by Company (for Attentions & Pathologies tabs)
+  // 2. Merge Patient Data AND Filter by Company (for Attenciones & Patologias tabs)
   const mergedData: MergedAttention[] = useMemo(() => {
     const joined = dateFilteredAttentions.map(att => {
       const patient = rawPatients.find(p => p.cedula === att.patientCedula);
@@ -131,19 +125,36 @@ const Reports: React.FC = () => {
       return rawPatients;
   }, [rawPatients, selectedCompany]);
 
-  // 4. Calculate Pathology Stats from the Merged (and filtered) Data
-  const pathologyStats = useMemo(() => {
+  // 4. Calculate Pathology Stats including ALL lines in diagnosis
+  const { pathologyStats, totalPathologiesCount } = useMemo(() => {
     const stats: Record<string, number> = {};
+    let totalCount = 0;
+
     mergedData.forEach(item => {
-      const patho = extractMainPathology(item.diagnosis);
-      stats[patho] = (stats[patho] || 0) + 1;
+      if (!item.diagnosis) return;
+      
+      // Split by newlines to get individual pathologies (Principal and Secondary)
+      const lines = item.diagnosis.split('\n');
+      
+      lines.forEach(line => {
+        const cleanedLine = line.trim();
+        if (cleanedLine) {
+          // Normalize for stats: we keep the full line as it usually contains [CODE] NAME
+          stats[cleanedLine] = (stats[cleanedLine] || 0) + 1;
+          totalCount++;
+        }
+      });
     });
 
     const sortedStats = Object.entries(stats)
-      .map(([name, count]) => ({ name, count, percentage: ((count / mergedData.length) * 100).toFixed(1) }))
+      .map(([name, count]) => ({ 
+        name, 
+        count, 
+        percentage: totalCount > 0 ? ((count / totalCount) * 100).toFixed(1) : "0.0" 
+      }))
       .sort((a, b) => b.count - a.count);
 
-    return sortedStats;
+    return { pathologyStats: sortedStats, totalPathologiesCount: totalCount };
   }, [mergedData]);
 
   // --- Export Functions ---
@@ -211,10 +222,10 @@ const Reports: React.FC = () => {
           </div>
       </div>
 
-      {/* Bottom Row: Date Filters (Only for Atenciones and Patologias) */}
+      {/* Bottom Row: Date Filters */}
       {activeTab !== 'pacientes' && (
         <div className="flex flex-col md:flex-row gap-4 items-end">
-            <div className="w-full md:w-auto">
+            <div className="w-full md:auto">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Rango de Fecha</label>
                 <div className="flex bg-slate-100 p-1 rounded-lg">
                 <button 
@@ -286,7 +297,7 @@ const Reports: React.FC = () => {
             )}
             
             <div className="ml-auto text-sm text-slate-500 pb-2">
-                {mergedData.length} registros encontrados
+                {mergedData.length} consultas en período
             </div>
         </div>
       )}
@@ -409,8 +420,9 @@ const Reports: React.FC = () => {
                  <div className="bg-purple-100 p-3 rounded-full mb-3 text-purple-600">
                     <Activity className="w-8 h-8" />
                  </div>
-                 <h3 className="text-3xl font-bold text-slate-800">{mergedData.length}</h3>
-                 <p className="text-sm text-slate-500 uppercase tracking-wide font-medium">Total Casos</p>
+                 <h3 className="text-3xl font-bold text-slate-800">{totalPathologiesCount}</h3>
+                 <p className="text-sm text-slate-500 uppercase tracking-wide font-medium">Patologías Identificadas</p>
+                 <p className="text-[10px] text-slate-400 mt-1 italic">(Incluye principales y secundarias)</p>
               </div>
               
               <div className="md:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -434,7 +446,7 @@ const Reports: React.FC = () => {
                                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                 ))}
                               </Pie>
-                              <RechartsTooltip />
+                              <RechartsTooltip contentStyle={{ fontSize: '10px' }} />
                             </PieChart>
                          </ResponsiveContainer>
                        ) : <div className="flex items-center justify-center h-full text-slate-300">Sin datos</div>}
@@ -442,13 +454,13 @@ const Reports: React.FC = () => {
                     <div className="flex-1 space-y-3 w-full">
                        {pathologyStats.slice(0, 3).map((item, index) => (
                           <div key={index} className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
-                             <div className="flex items-center gap-3">
-                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index] }}></div>
-                                <span className="font-medium text-slate-700 truncate max-w-[150px] md:max-w-xs" title={item.name}>{item.name}</span>
+                             <div className="flex items-center gap-3 overflow-hidden">
+                                <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: COLORS[index] }}></div>
+                                <span className="font-medium text-slate-700 truncate max-w-[150px] md:max-w-xs text-xs" title={item.name}>{item.name}</span>
                              </div>
-                             <div className="text-right">
-                                <span className="block font-bold text-slate-900">{item.count} casos</span>
-                                <span className="text-xs text-slate-500">{item.percentage}%</span>
+                             <div className="text-right shrink-0">
+                                <span className="block font-bold text-slate-900 text-xs">{item.count} casos</span>
+                                <span className="text-[10px] text-slate-500">{item.percentage}%</span>
                              </div>
                           </div>
                        ))}
@@ -468,12 +480,18 @@ const Reports: React.FC = () => {
                         <BarChart
                           data={pathologyStats.slice(0, 10)}
                           layout="vertical"
-                          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                          margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
                         >
                           <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
                           <XAxis type="number" hide />
-                          <YAxis type="category" dataKey="name" width={100} tick={{fontSize: 10}} interval={0} />
-                          <RechartsTooltip />
+                          <YAxis 
+                            type="category" 
+                            dataKey="name" 
+                            width={120} 
+                            tick={{fontSize: 9, fontWeight: 'medium', fill: '#475569'}} 
+                            interval={0} 
+                          />
+                          <RechartsTooltip cursor={{fill: '#f8fafc'}} contentStyle={{ fontSize: '10px' }} />
                           <Bar dataKey="count" fill="#8884d8" radius={[0, 4, 4, 0]}>
                             {pathologyStats.slice(0, 10).map((entry, index) => (
                               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -489,13 +507,13 @@ const Reports: React.FC = () => {
 
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                  <div className="p-4 bg-slate-50 border-b border-slate-200">
-                    <h4 className="font-bold text-slate-800">Detalle de Morbilidad</h4>
+                    <h4 className="font-bold text-slate-800">Censo Completo de Morbilidad</h4>
                  </div>
                  <div className="overflow-y-auto max-h-[350px]">
                     <table className="w-full text-sm">
                        <thead className="bg-white sticky top-0 z-10 shadow-sm">
                           <tr className="text-xs text-slate-500 uppercase">
-                             <th className="px-4 py-3 text-left">Patología</th>
+                             <th className="px-4 py-3 text-left">Patología / Hallazgo</th>
                              <th className="px-4 py-3 text-right">Frecuencia</th>
                              <th className="px-4 py-3 text-right">%</th>
                           </tr>
@@ -503,13 +521,13 @@ const Reports: React.FC = () => {
                        <tbody className="divide-y divide-slate-100">
                           {pathologyStats.map((stat, idx) => (
                              <tr key={idx} className="hover:bg-slate-50">
-                                <td className="px-4 py-2 font-medium text-slate-700">{stat.name}</td>
-                                <td className="px-4 py-2 text-right">{stat.count}</td>
-                                <td className="px-4 py-2 text-right text-slate-500">{stat.percentage}%</td>
+                                <td className="px-4 py-2 font-medium text-slate-700 text-xs">{stat.name}</td>
+                                <td className="px-4 py-2 text-right font-bold">{stat.count}</td>
+                                <td className="px-4 py-2 text-right text-slate-500 text-[10px]">{stat.percentage}%</td>
                              </tr>
                           ))}
                           {pathologyStats.length === 0 && (
-                            <tr><td colSpan={3} className="p-4 text-center text-slate-400">Sin datos</td></tr>
+                            <tr><td colSpan={3} className="p-4 text-center text-slate-400">Sin datos registrados en este rango.</td></tr>
                           )}
                        </tbody>
                     </table>
@@ -524,7 +542,7 @@ const Reports: React.FC = () => {
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             {renderFilters()}
 
-           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6 flex justify-between items-center">
+           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
                  <h3 className="text-lg font-bold text-slate-800">
                      Maestro de Pacientes 

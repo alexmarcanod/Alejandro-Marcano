@@ -1,3 +1,4 @@
+
 import { LucideIcon } from "lucide-react";
 
 export interface MenuItem {
@@ -134,6 +135,12 @@ export interface Company {
 }
 
 export interface JobTitle {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface Department {
   id: string;
   name: string;
   createdAt: string;

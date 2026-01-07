@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Save, User, Briefcase, Stethoscope, AlertCircle, CheckCircle2, 
   Upload, Trash2, Camera, Search, PenSquare, Plus, AlertTriangle, MapPin, GraduationCap, Clock
 } from 'lucide-react';
-import { savePatientToDB, findPatientByCedula, updatePatient, deletePatient, getCompanies, getJobTitles } from '../utils/storage';
-import { Patient, Company, JobTitle } from '../types';
+import { savePatientToDB, findPatientByCedula, updatePatient, deletePatient, getCompanies, getJobTitles, getDepartments } from '../utils/storage';
+import { Patient, Company, JobTitle, Department } from '../types';
 
 type TabMode = 'add' | 'edit' | 'delete';
 
@@ -17,6 +18,7 @@ const PatientRegistration: React.FC = () => {
   // --- External Data State ---
   const [companiesList, setCompaniesList] = useState<Company[]>([]);
   const [jobTitlesList, setJobTitlesList] = useState<JobTitle[]>([]);
+  const [departmentsList, setDepartmentsList] = useState<Department[]>([]);
 
   // --- Search State (Edit/Delete) ---
   const [searchCedula, setSearchCedula] = useState('');
@@ -50,7 +52,7 @@ const PatientRegistration: React.FC = () => {
     employmentStatus: 'fijo'
   });
 
-  // Load Companies and JobTitles on mount
+  // Load Companies, JobTitles and Departments on mount
   useEffect(() => {
     const fetchExternalData = async () => {
       const comps = await getCompanies();
@@ -58,6 +60,9 @@ const PatientRegistration: React.FC = () => {
       
       const jobs = await getJobTitles();
       setJobTitlesList(jobs);
+
+      const depts = await getDepartments();
+      setDepartmentsList(depts);
     };
     fetchExternalData();
   }, []);
@@ -632,14 +637,17 @@ const PatientRegistration: React.FC = () => {
 
                 <div>
                    <label className="block text-sm font-medium text-slate-700 mb-1">Departamento</label>
-                   <input 
-                      type="text"
-                      name="department"
-                      value={formData.department}
-                      onChange={handleChange}
-                      placeholder="Ej. Mantenimiento, Administración"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                   />
+                   <select
+                    name="department"
+                    value={formData.department}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                  >
+                    <option value="">-- Seleccionar Departamento --</option>
+                    {departmentsList.map(d => (
+                      <option key={d.id} value={d.name}>{d.name}</option>
+                    ))}
+                  </select>
                 </div>
                 
                 <div>

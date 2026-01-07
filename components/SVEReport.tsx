@@ -2,10 +2,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { getAllMedicalAttentions, getAllPatients, getCompanies, getDoctors } from '../utils/storage';
 import { MedicalAttention, Patient, Company, Doctor } from '../types';
-import { Printer, ShieldCheck, Building2, Table as TableIcon, FileDown, Users, Stethoscope } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
+import { Printer, ShieldCheck, Building2, Table as TableIcon, FileDown, Users, Stethoscope, PieChart as PieChartIcon } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList, PieChart, Pie } from 'recharts';
 
 type Quarter = 'I' | 'II' | 'III' | 'IV';
+
+const COLORS_SERIES = ['#1e4ed8', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
 const SVEReport: React.FC = () => {
   const reportRef = useRef<HTMLDivElement>(null);
@@ -91,14 +93,18 @@ const SVEReport: React.FC = () => {
       return allPatients.filter(p => p.company === selectedCompanyName);
   }, [allPatients, selectedCompanyName]);
 
-  // Helper to filter patients active in a specific month
+  const attentionsInScope = useMemo(() => {
+    const patientCedulas = new Set(patientsInScope.map(p => p.cedula));
+    return allAttentions.filter(a => patientCedulas.has(a.patientCedula));
+  }, [allAttentions, patientsInScope]);
+
   const getPatientsActiveInMonth = (monthIdx: number, year: number) => {
-    const reportLastDayOfMonth = new Date(year, monthIdx + 1, 0);
-    return patientsInScope.filter(p => {
-      if (!p.entryDate) return true; // Si no hay fecha de ingreso, asumimos que es histórico
-      const entry = new Date(p.entryDate);
-      return entry <= reportLastDayOfMonth;
+    const monthlyAttentions = attentionsInScope.filter(att => {
+      const attDate = new Date(att.attentionDate + 'T00:00:00');
+      return attDate.getFullYear() === year && attDate.getMonth() === monthIdx;
     });
+    const treatedCedulas = new Set(monthlyAttentions.map(a => a.patientCedula));
+    return patientsInScope.filter(p => treatedCedulas.has(p.cedula));
   };
 
   const getAgeGroupStatsForList = (list: Patient[]) => {
@@ -129,11 +135,6 @@ const SVEReport: React.FC = () => {
     ];
   }, [patientsInScope]);
 
-  const attentionsInScope = useMemo(() => {
-      const patientCedulas = new Set(patientsInScope.map(p => p.cedula));
-      return allAttentions.filter(a => patientCedulas.has(a.patientCedula));
-  }, [allAttentions, patientsInScope]);
-
   const currentCompany = useMemo(() => {
       return companies.find(c => c.name === selectedCompanyName);
   }, [companies, selectedCompanyName]);
@@ -145,7 +146,7 @@ const SVEReport: React.FC = () => {
   const quarterAttentions = useMemo(() => {
     const months = getQuarterMonths(selectedQuarter);
     return attentionsInScope.filter(att => {
-      const d = new Date(att.attentionDate);
+      const d = new Date(att.attentionDate + 'T00:00:00');
       return d.getFullYear() === selectedYear && months.includes(d.getMonth());
     });
   }, [attentionsInScope, selectedYear, selectedQuarter]);
@@ -157,7 +158,7 @@ const SVEReport: React.FC = () => {
     }
 
     attentionsInScope.forEach(att => {
-        const d = new Date(att.attentionDate);
+        const d = new Date(att.attentionDate + 'T00:00:00');
         if (d.getFullYear() === selectedYear) {
             const month = d.getMonth();
             if (att.reason === 'Accidente Común') summary[month].ac++;
@@ -210,6 +211,25 @@ const SVEReport: React.FC = () => {
     enfComunes: quarterAttentions.filter(a => a.reason === 'Enfermedad Común'),
     enfOcupacionales: quarterAttentions.filter(a => a.reason === 'Enfermedad Ocupacional'),
   }), [quarterAttentions]);
+
+  // --- Chart Data Calculators ---
+
+  const examPieData = useMemo(() => {
+    return Object.entries(examResults)
+      // Fix: Cast stats to any to access total property and avoid TypeScript inference issues with Object.entries
+      .map(([name, stats]) => ({ name, value: (stats as any).total }))
+      .filter(item => item.value > 0);
+  }, [examResults]);
+
+  const restsPieData = useMemo(() => {
+    const data = [
+        { name: 'Accidentes Comunes', value: morbidityDetails.accComunes.length },
+        { name: 'Accidentes de Trabajo', value: morbidityDetails.accTrabajo.length },
+        { name: 'Enfermedades Comunes', value: morbidityDetails.enfComunes.length },
+        { name: 'Enfermedades Ocupacionales', value: morbidityDetails.enfOcupacionales.length },
+    ];
+    return data.filter(item => item.value > 0);
+  }, [morbidityDetails]);
 
   const handleExportWord = () => {
     if (!reportRef.current) return;
@@ -360,6 +380,7 @@ const SVEReport: React.FC = () => {
                     .page-break { page-break-after: always; padding-top: 20px; }
                     table { page-break-inside: auto; }
                     tr { page-break-inside: avoid; page-break-after: auto; }
+                    .no-print-chart { display: none !important; } /* If needed to hide specific elements on print */
                 }
                 .section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 15px 0 10px 0; background: #f8fafc; }
                 table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10px; }
@@ -368,6 +389,7 @@ const SVEReport: React.FC = () => {
                 .sub-title { font-weight: bold; background: #f8fafc; text-align: center; }
                 .bg-total { background-color: #f1f5f9; font-weight: bold; }
                 .text-occurrence { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 25px 0 10px 0; }
+                .chart-container { height: 220px; width: 100%; margin: 10px 0; display: flex; flex-direction: column; align-items: center; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background: #fdfdfd; }
             `}</style>
 
             {/* PAGE 1: DATOS, CARGOS Y DISCRIMINACIONES DEMOGRÁFICAS */}
@@ -456,12 +478,12 @@ const SVEReport: React.FC = () => {
 
                 <div className="section-title">1.- Registro mensual de la cantidad de trabajadores discriminados</div>
                 
-                <p className="text-[10px] font-bold mb-2">A. Discriminación por Sexo y Discapacidad</p>
+                <p className="text-[10px] font-bold mb-2">A. Discriminación por Sexo y Discapacidad (Vinculados a Evaluación)</p>
                 <table>
                     <thead>
                         <tr>
                             <th className="w-40">Período / Mes</th>
-                            <th className="text-center">Total Nómina</th>
+                            <th className="text-center">Total Atendidos</th>
                             <th className="text-center">Masculino</th>
                             <th className="text-center">Femenino</th>
                             <th className="text-center">Con Discapacidad</th>
@@ -483,7 +505,7 @@ const SVEReport: React.FC = () => {
                     </tbody>
                 </table>
 
-                <p className="text-[10px] font-bold mb-2 mt-4">B. Discriminación por Grupo Etario</p>
+                <p className="text-[10px] font-bold mb-2 mt-4">B. Discriminación por Grupo Etario (Vinculados a Evaluación)</p>
                 <table>
                     <thead>
                         <tr>
@@ -658,6 +680,39 @@ const SVEReport: React.FC = () => {
                     </tbody>
                 </table>
 
+                {/* GRAFICO SECCION 5 */}
+                <div className="chart-container">
+                    <div className="flex items-center gap-2 mb-2">
+                        <PieChartIcon className="w-3 h-3 text-slate-500" />
+                        <span className="text-[10px] font-black uppercase text-slate-500">Gráfico: Distribución de Evaluaciones Realizadas</span>
+                    </div>
+                    {examPieData.length > 0 ? (
+                        <div className="flex w-full h-full items-center justify-center">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={examPieData}
+                                        cx="50%" cy="50%"
+                                        innerRadius={30}
+                                        outerRadius={70}
+                                        dataKey="value"
+                                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                                        labelLine={true}
+                                        isAnimationActive={false}
+                                    >
+                                        {examPieData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS_SERIES[index % COLORS_SERIES.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip contentStyle={{ fontSize: '10px', borderRadius: '8px' }} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex items-center justify-center text-[9px] text-slate-400 italic">Sin datos registrados para graficar.</div>
+                    )}
+                </div>
+
                 <div className="section-title">6.- Referencias a centros especializados</div>
                 <table>
                     <thead>
@@ -729,6 +784,40 @@ const SVEReport: React.FC = () => {
                         </tr>
                     </tfoot>
                 </table>
+
+                {/* GRAFICO SECCION 7 */}
+                <div className="chart-container">
+                    <div className="flex items-center gap-2 mb-2">
+                        <PieChartIcon className="w-3 h-3 text-slate-500" />
+                        <span className="text-[10px] font-black uppercase text-slate-500">Gráfico: Proporción de Casos de Reposo por Categoría</span>
+                    </div>
+                    {restsPieData.length > 0 ? (
+                        <div className="flex w-full h-full items-center justify-center">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={restsPieData}
+                                        cx="50%" cy="50%"
+                                        innerRadius={30}
+                                        outerRadius={70}
+                                        dataKey="value"
+                                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                                        labelLine={true}
+                                        isAnimationActive={false}
+                                    >
+                                        {restsPieData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS_SERIES[(index + 2) % COLORS_SERIES.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip contentStyle={{ fontSize: '10px', borderRadius: '8px' }} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex items-center justify-center text-[9px] text-slate-400 italic">No se registraron casos de reposo para este periodo.</div>
+                    )}
+                </div>
+
                 <SubscriptionTable type="full" />
             </div>
 
@@ -737,7 +826,7 @@ const SVEReport: React.FC = () => {
                 <div className="section-title">8.- Registro de Personas con discapacidad atendidos</div>
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded text-[10px]">
                     Total de trabajadores con discapacidad en nómina: <strong>{patientsInScope.filter(p => p.hasDisability).length}</strong>. <br/>
-                    Atenciones realizadas a este grupo en el trimestre: <strong>{quarterAttentions.filter(a => allPatients.find(p => p.cedula === a.patientCedula)?.hasDisability).length}</strong>.
+                    Atenciones realizadas a este group en el trimestre: <strong>{quarterAttentions.filter(a => allPatients.find(p => p.cedula === a.patientCedula)?.hasDisability).length}</strong>.
                 </div>
 
                 <div className="section-title">9.- Factores de riesgo y procesos peligrosos</div>
