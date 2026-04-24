@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Printer, Activity, AlertCircle, FileText, ChevronRight, ShieldPlus } from 'lucide-react';
-import { findPatientByCedula, getMedicalAttentionsByCedula, getDoctors } from '../utils/storage';
-import { Patient, MedicalAttention, Doctor } from '../types';
+import { findPatientByCedula, getMedicalAttentionsByCedula, getDoctors, getCompanies } from '../utils/storage';
+import { Patient, MedicalAttention, Doctor, Company } from '../types';
 
 const DiagnosticImpression: React.FC = () => {
   // State for Search
@@ -13,25 +13,26 @@ const DiagnosticImpression: React.FC = () => {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [attentions, setAttentions] = useState<MedicalAttention[]>([]);
   const [selectedAttention, setSelectedAttention] = useState<MedicalAttention | null>(null);
-  const [assignedDoctor, setAssignedDoctor] = useState<Doctor | null>(null);
+  const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [allDoctors, setAllDoctors] = useState<Doctor[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
 
-  // Load doctors for lookup
+  // Load reference data
   useEffect(() => {
-    const loadDocs = async () => {
-        const docs = await getDoctors();
+    const fetchData = async () => {
+        const [docs, comps] = await Promise.all([getDoctors(), getCompanies()]);
         setAllDoctors(docs);
+        setCompanies(comps);
     };
-    loadDocs();
+    fetchData();
   }, []);
 
-  // Update assigned doctor when attention changes
+  // Update selected doctor when attention changes
   useEffect(() => {
     if (selectedAttention && selectedAttention.doctorId) {
-        const doc = allDoctors.find(d => d.id === selectedAttention.doctorId);
-        setAssignedDoctor(doc || null);
-    } else {
-        setAssignedDoctor(null);
+        setSelectedDoctorId(selectedAttention.doctorId);
+    } else if (allDoctors.length > 0 && !selectedDoctorId) {
+        setSelectedDoctorId(allDoctors[0].id);
     }
   }, [selectedAttention, allDoctors]);
 
@@ -152,12 +153,24 @@ const DiagnosticImpression: React.FC = () => {
                 
                 {/* Actions Bar */}
                 <div className="flex justify-between items-center mb-6 print:hidden">
-                    <button 
-                        onClick={() => setSelectedAttention(null)}
-                        className="text-sm text-slate-500 hover:text-slate-800 font-medium underline"
-                    >
-                        ← Volver a selección
-                    </button>
+                    <div className="flex items-center gap-4">
+                        <button 
+                            onClick={() => setSelectedAttention(null)}
+                            className="text-sm text-slate-500 hover:text-slate-800 font-medium underline"
+                        >
+                            ← Volver a selección
+                        </button>
+                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5">
+                            <ShieldPlus className="w-4 h-4 text-slate-400" />
+                            <select 
+                                value={selectedDoctorId}
+                                onChange={(e) => setSelectedDoctorId(e.target.value)}
+                                className="text-sm font-bold text-slate-700 outline-none bg-transparent"
+                            >
+                                {allDoctors.map(d => <option key={d.id} value={d.id}>{d.title} {d.firstName}</option>)}
+                            </select>
+                        </div>
+                    </div>
                     <button 
                         onClick={() => window.print()}
                         className="px-6 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 font-medium shadow-lg flex items-center gap-2"
@@ -176,8 +189,11 @@ const DiagnosticImpression: React.FC = () => {
                                 <ShieldPlus className="w-10 h-10" />
                             </div>
                             <div>
-                                <h1 className="text-xl font-bold text-slate-900 uppercase tracking-wider leading-tight">Alex Consulting</h1>
-                                <p className="text-sm font-semibold text-slate-600 uppercase tracking-widest">Servicios Médicos</p>
+                                <h1 className="text-xl font-bold text-slate-900 uppercase tracking-wider leading-tight">{patient.company}</h1>
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-tight">
+                                    Servicio Medico<br/>
+                                    {companies.find(c => c.name === patient.company)?.rif ? `RIF: ${companies.find(c => c.name === patient.company)?.rif}` : ''}
+                                </p>
                             </div>
                         </div>
                         <div className="text-right text-xs font-mono">
@@ -187,9 +203,9 @@ const DiagnosticImpression: React.FC = () => {
                                     {new Date(selectedAttention.attentionDate).toLocaleDateString()}
                                 </span>
 
-                                <span className="font-bold text-slate-500 uppercase mt-1">N° Historia:</span>
+                                <span className="font-bold text-slate-500 uppercase mt-1">N° Informe:</span>
                                 <span className="font-bold text-slate-900 text-sm border-b border-slate-300 px-2 mt-1">
-                                    {patient.cedula}
+                                    {selectedAttention.reportNumber || patient.cedula}
                                 </span>
 
                                 <span className="font-bold text-slate-500 uppercase mt-1">Tipo:</span>
@@ -339,13 +355,15 @@ const DiagnosticImpression: React.FC = () => {
                         <div className="w-64 text-center">
                             {/* Signature Line */}
                             <div className="border-t border-slate-900 pt-2">
-                                {assignedDoctor ? (
+                                {allDoctors.find(d => d.id === selectedDoctorId) ? (
                                     <>
-                                        <p className="font-bold text-sm uppercase">{assignedDoctor.title} {assignedDoctor.firstName}</p>
-                                        <p className="text-xs">C.I: {assignedDoctor.cedula}</p>
-                                        <p className="text-xs">M.P.P.S: {assignedDoctor.mpps}</p>
-                                        {assignedDoctor.collegeId && <p className="text-xs">C.M: {assignedDoctor.collegeId}</p>}
-                                        {assignedDoctor.inpsasel && <p className="text-xs">INPSASEL: {assignedDoctor.inpsasel}</p>}
+                                        <p className="font-bold text-sm uppercase">
+                                            {allDoctors.find(d => d.id === selectedDoctorId)?.title} {allDoctors.find(d => d.id === selectedDoctorId)?.firstName}
+                                        </p>
+                                        <p className="text-xs">C.I: {allDoctors.find(d => d.id === selectedDoctorId)?.cedula}</p>
+                                        <p className="text-xs">M.P.P.S: {allDoctors.find(d => d.id === selectedDoctorId)?.mpps}</p>
+                                        {allDoctors.find(d => d.id === selectedDoctorId)?.collegeId && <p className="text-xs">C.M: {allDoctors.find(d => d.id === selectedDoctorId)?.collegeId}</p>}
+                                        {allDoctors.find(d => d.id === selectedDoctorId)?.inpsasel && <p className="text-xs">INPSASEL: {allDoctors.find(d => d.id === selectedDoctorId)?.inpsasel}</p>}
                                         <p className="text-[10px] mt-1 text-slate-500 font-bold uppercase">Médico Evaluador</p>
                                     </>
                                 ) : (
@@ -356,7 +374,7 @@ const DiagnosticImpression: React.FC = () => {
                     </div>
 
                     <div className="mt-12 pt-4 border-t border-slate-300 text-[10px] text-center text-slate-400">
-                        <p>Documento generado electrónicamente por Alex Consulting System el {new Date().toLocaleDateString()}</p>
+                        <p>Documento generado electrónicamente por Sistema de Vigilancia Epidemiológica el {new Date().toLocaleDateString()}</p>
                     </div>
 
                 </div>

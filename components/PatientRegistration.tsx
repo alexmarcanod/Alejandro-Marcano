@@ -188,8 +188,8 @@ const PatientRegistration: React.FC = () => {
       }
       
       setTimeout(() => setSuccessMsg(null), 3000);
-    } catch (error) {
-      alert(`Error al ${activeTab === 'add' ? 'guardar' : 'actualizar'} el paciente.`);
+    } catch (error: any) {
+      alert(error.message || `Error al ${activeTab === 'add' ? 'guardar' : 'actualizar'} el paciente.`);
     } finally {
       setLoading(false);
     }

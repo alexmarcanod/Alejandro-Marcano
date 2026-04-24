@@ -131,7 +131,7 @@ const Reports: React.FC = () => {
     let totalCount = 0;
 
     mergedData.forEach(item => {
-      if (!item.diagnosis) return;
+      if (!item.diagnosis || item.reason === 'No Aplica') return;
       
       // Split by newlines to get individual pathologies (Principal and Secondary)
       const lines = item.diagnosis.split('\n');

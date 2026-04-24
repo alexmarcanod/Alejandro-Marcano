@@ -15,8 +15,10 @@ import DepartmentsManagement from './components/DepartmentsManagement';
 import DiagnosticImpression from './components/DiagnosticImpression';
 import Appointments from './components/Appointments';
 import MedicalReportGenerator from './components/MedicalReportGenerator';
+import RestValidation from './components/RestValidation';
 import DataImport from './components/DataImport';
 import Settings from './components/Settings';
+import ClinicalEvaluationsSummary from './components/ClinicalEvaluationsSummary';
 import { Menu, Calendar, Clock, CheckCircle2, ClipboardList, Building2, Users, ChevronRight } from 'lucide-react';
 import { getAppointments, initializeAuth, getCompanies, getAllPatients } from './utils/storage';
 import { Appointment, AppUser, Company, Patient } from './types';
@@ -89,11 +91,15 @@ const App: React.FC = () => {
         return <JobTitlesManagement />;
       case 'departamento':
         return <DepartmentsManagement />;
+      case 'historia-clinica':
       case 'historia-clínica':
         return <ClinicalHistory />;
       case 'atencion': 
+      case 'atencion-medica':
       case 'atención-médica': 
         return <MedicalAttention />;
+      case 'validacion-reposos':
+        return <RestValidation />;
       case 'citas':
         return <Appointments />;
       case 'recipe':
@@ -102,6 +108,7 @@ const App: React.FC = () => {
       case 'reporte':
         return <Reports />;
       case 'diagnostica':
+      case 'i-diagnostica':
       case 'i-diagnóstica':
         return <DiagnosticImpression />;
       case 'informes-medicos':
@@ -132,6 +139,8 @@ const App: React.FC = () => {
               </div>
               <div className="absolute right-0 top-0 h-full w-1/3 bg-gradient-to-l from-blue-50 to-transparent opacity-50 pointer-events-none"></div>
             </div>
+
+            <ClinicalEvaluationsSummary />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
                 <div className="lg:col-span-1 space-y-6">

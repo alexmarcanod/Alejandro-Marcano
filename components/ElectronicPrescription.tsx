@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Search, User, FileText, Plus, Trash2, Printer, 
-  Save, AlertCircle, Pill, ClipboardList, PenTool 
+  Save, AlertCircle, Pill, ClipboardList, PenTool, UserCog 
 } from 'lucide-react';
-import { findPatientByCedula, savePrescriptionToDB } from '../utils/storage';
-import { Patient, PrescriptionItem } from '../types';
+import { findPatientByCedula, savePrescriptionToDB, getDoctors, getCompanies } from '../utils/storage';
+import { Patient, PrescriptionItem, Doctor, Company } from '../types';
 
 const ElectronicPrescription: React.FC = () => {
   // --- State ---
@@ -12,6 +12,12 @@ const ElectronicPrescription: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [searchError, setSearchError] = useState('');
+
+  // Doctors & Companies
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [selectedDoctorId, setSelectedDoctorId] = useState('');
+  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
 
   // Prescription Data
   const [medicines, setMedicines] = useState<PrescriptionItem[]>([]);
@@ -23,13 +29,24 @@ const ElectronicPrescription: React.FC = () => {
   const [medDose, setMedDose] = useState('');
   const [medQty, setMedQty] = useState('');
 
-  // Doctor Info (Mocked for current user context)
-  const doctorInfo = {
-    name: "Dr. Alex Marcano",
-    license: "MPPS: 54.321 | CMA: 12.345",
-    phone: "0414-123.45.67",
-    specialty: "Medicina Ocupacional"
-  };
+  // --- Effects ---
+  useEffect(() => {
+    const fetchData = async () => {
+      const [docs, comps] = await Promise.all([getDoctors(), getCompanies()]);
+      setDoctors(docs);
+      setCompanies(comps);
+      if (docs.length > 0) {
+        setSelectedDoctorId(docs[0].id);
+        setSelectedDoctor(docs[0]);
+      }
+    };
+    fetchData();
+  }, []);
+
+  useEffect(() => {
+    const doc = doctors.find(d => d.id === selectedDoctorId);
+    setSelectedDoctor(doc || null);
+  }, [selectedDoctorId, doctors]);
 
   // --- Logic ---
 
@@ -106,8 +123,8 @@ const ElectronicPrescription: React.FC = () => {
             date: new Date().toISOString(),
             medicines: medicines,
             indications: indications,
-            doctorName: doctorInfo.name,
-            doctorLicense: doctorInfo.license
+            doctorName: selectedDoctor ? `${selectedDoctor.title} ${selectedDoctor.firstName}` : '',
+            doctorLicense: selectedDoctor ? `MPPS: ${selectedDoctor.mpps}${selectedDoctor.collegeId ? ` | CM: ${selectedDoctor.collegeId}` : ''}` : ''
         });
 
         // Trigger Print after saving
@@ -131,28 +148,50 @@ const ElectronicPrescription: React.FC = () => {
 
       {/* SEARCH (Hidden on Print) */}
       <section className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8 print:hidden">
-        <form onSubmit={handleSearch} className="flex gap-4 items-end">
-          <div className="flex-1 max-w-md">
-            <label className="block text-sm font-medium text-slate-700 mb-1">Cédula del Paciente</label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
+          <form onSubmit={handleSearch} className="flex gap-4 items-end">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Cédula del Paciente</label>
+              <div className="relative">
+                <input 
+                  type="number" 
+                  value={searchCedula}
+                  onChange={(e) => setSearchCedula(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="Ingrese Cédula"
+                />
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              </div>
+            </div>
+            <button 
+              type="submit"
+              disabled={isSearching}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors font-medium"
+            >
+              {isSearching ? 'Buscando...' : 'Nueva Receta'}
+            </button>
+          </form>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Médico Tratante</label>
             <div className="relative">
-              <input 
-                type="number" 
-                value={searchCedula}
-                onChange={(e) => setSearchCedula(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                placeholder="Ingrese Cédula"
-              />
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              <select 
+                value={selectedDoctorId}
+                onChange={(e) => setSelectedDoctorId(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none"
+              >
+                {doctors.length === 0 ? (
+                  <option value="">No hay médicos registrados</option>
+                ) : (
+                  doctors.map(doc => (
+                    <option key={doc.id} value={doc.id}>{doc.title} {doc.firstName}</option>
+                  ))
+                )}
+              </select>
+              <UserCog className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
             </div>
           </div>
-          <button 
-            type="submit"
-            disabled={isSearching}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors font-medium"
-          >
-            {isSearching ? 'Buscando...' : 'Nueva Receta'}
-          </button>
-        </form>
+        </div>
         {searchError && <p className="text-red-500 text-sm mt-3 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {searchError}</p>}
       </section>
 
@@ -167,8 +206,11 @@ const ElectronicPrescription: React.FC = () => {
                         Rx
                      </div>
                      <div>
-                        <h1 className="text-xl font-bold text-slate-900 uppercase tracking-wide">Alex Consulting</h1>
-                        <p className="text-xs text-slate-500 uppercase tracking-widest">{doctorInfo.specialty}</p>
+                        <h1 className="text-xl font-bold text-slate-900 uppercase tracking-wide">{patient.company}</h1>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold leading-tight">
+                          Servicio Medico<br/>
+                          {companies.find(c => c.name === patient.company)?.rif ? `RIF: ${companies.find(c => c.name === patient.company)?.rif}` : ''}
+                        </p>
                      </div>
                 </div>
                 <div className="text-right">
@@ -294,29 +336,45 @@ const ElectronicPrescription: React.FC = () => {
                             <PenTool className="w-8 h-8 text-slate-200 print:hidden" />
                         </div>
                         <div className="border-t border-slate-800 pt-2">
-                            <p className="font-bold text-slate-900">{doctorInfo.name}</p>
-                            <p className="text-xs text-slate-600 uppercase tracking-wider">{doctorInfo.license}</p>
-                            <p className="text-xs text-slate-500 mt-1">{doctorInfo.phone}</p>
+                            <p className="font-bold text-slate-900">{selectedDoctor ? `${selectedDoctor.title} ${selectedDoctor.firstName}` : 'Firma del Médico'}</p>
+                            <p className="text-xs text-slate-600 uppercase tracking-wider">
+                                {selectedDoctor ? `MPPS: ${selectedDoctor.mpps}${selectedDoctor.collegeId ? ` | CM: ${selectedDoctor.collegeId}` : ''}` : ''}
+                            </p>
+                            {selectedDoctor?.inpsasel && (
+                                <p className="text-[10px] text-slate-500 mt-0.5 uppercase">INPSASEL: {selectedDoctor.inpsasel}</p>
+                            )}
                         </div>
                      </div>
                 </div>
             </div>
 
             {/* Actions Bar (Floating or bottom) */}
-            <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-end gap-3 print:hidden">
-                <button 
-                    onClick={handleSaveAndPrint}
-                    disabled={isSaving}
-                    className="px-6 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 font-medium flex items-center gap-2 shadow-lg transform hover:-translate-y-0.5 transition-all"
-                >
-                    {isSaving ? 'Guardando...' : (
-                        <>
-                            <Printer className="w-4 h-4" />
-                            <Save className="w-4 h-4" />
-                            Guardar e Imprimir
-                        </>
-                    )}
-                </button>
+            <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-between items-center print:hidden">
+                <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5">
+                    <UserCog className="w-4 h-4 text-slate-400" />
+                    <select 
+                        value={selectedDoctorId}
+                        onChange={(e) => setSelectedDoctorId(e.target.value)}
+                        className="text-sm font-bold text-slate-700 outline-none bg-transparent"
+                    >
+                        {doctors.map(d => <option key={d.id} value={d.id}>{d.title} {d.firstName}</option>)}
+                    </select>
+                </div>
+                <div className="flex gap-3">
+                    <button 
+                        onClick={handleSaveAndPrint}
+                        disabled={isSaving}
+                        className="px-6 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 font-medium flex items-center gap-2 shadow-lg transform hover:-translate-y-0.5 transition-all"
+                    >
+                        {isSaving ? 'Guardando...' : (
+                            <>
+                                <Printer className="w-4 h-4" />
+                                <Save className="w-4 h-4" />
+                                Guardar e Imprimir
+                            </>
+                        )}
+                    </button>
+                </div>
             </div>
         </div>
       )}

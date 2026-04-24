@@ -42,7 +42,28 @@ const DataImport: React.FC = () => {
     };
 
     const downloadTemplate = () => {
-        const templateData = [{"CEDULA": "12345678", "NOMBRES_APELLIDOS": "JUAN PEREZ", "FECHA_NACIMIENTO": "1990-05-15", "SEXO": "Masculino", "CARGO": "ANALISTA"}];
+        const templateData = [{
+            "CEDULA": "12345678",
+            "NOMBRES_APELLIDOS": "JUAN PEREZ",
+            "FECHA_NACIMIENTO": "1990-05-15",
+            "LUGAR_NACIMIENTO": "CARACAS",
+            "SEXO": "Masculino",
+            "ESTADO_CIVIL": "Soltero",
+            "GRADO_INSTRUCCION": "Universitario",
+            "MANO_DOMINANTE": "Diestro",
+            "DIRECCION": "CALLE 1, CASA 2",
+            "ESTADO_UBICACION": "LARA",
+            "PAIS": "VENEZUELA",
+            "TELEFONO": "0414-1234567",
+            "ANTECEDENTES_MEDICOS": "NINGUNO",
+            "DISCAPACIDAD": "NO",
+            "DESC_DISCAPACIDAD": "",
+            "DEPARTAMENTO": "ADMINISTRACION",
+            "CARGO": "ANALISTA",
+            "HORARIO_TRABAJO": "08:00 AM - 05:00 PM",
+            "FECHA_INGRESO": "2020-01-01",
+            "ESTATUS_LABORAL": "fijo"
+        }];
         const ws = XLSX.utils.json_to_sheet(templateData);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Plantilla_Pacientes");
@@ -57,11 +78,24 @@ const DataImport: React.FC = () => {
                 firstName: String(row.NOMBRES_APELLIDOS || '').toUpperCase(),
                 cedula: String(row.CEDULA || ''),
                 birthDate: String(row.FECHA_NACIMIENTO || ''),
+                placeOfBirth: String(row.LUGAR_NACIMIENTO || ''),
                 gender: (row.SEXO === 'Femenino' ? 'Femenino' : 'Masculino') as any,
+                maritalStatus: (row.ESTADO_CIVIL || 'Soltero') as any,
+                educationLevel: (row.GRADO_INSTRUCCION || 'Secundaria') as any,
+                dominantHand: (row.MANO_DOMINANTE || 'Diestro') as any,
+                address: String(row.DIRECCION || ''),
+                state: String(row.ESTADO_UBICACION || ''),
+                country: String(row.PAIS || 'Venezuela'),
+                phone: String(row.TELEFONO || ''),
+                medicalHistory: String(row.ANTECEDENTES_MEDICOS || ''),
+                hasDisability: String(row.DISCAPACIDAD || '').toUpperCase() === 'SI',
+                disabilityDescription: String(row.DESC_DISCAPACIDAD || ''),
                 company: selectedTargetCompany,
+                department: String(row.DEPARTAMENTO || ''),
                 jobTitle: String(row.CARGO || ''),
-                employmentStatus: 'fijo' as any,
-                medicalHistory: '', hasDisability: false
+                workSchedule: String(row.HORARIO_TRABAJO || ''),
+                entryDate: String(row.FECHA_INGRESO || ''),
+                employmentStatus: (String(row.ESTATUS_LABORAL || '').toLowerCase() === 'contratado' ? 'contratado' : 'fijo') as any,
             }));
             const result = await batchSavePatients(mappedPatients as any);
             setStats(result);

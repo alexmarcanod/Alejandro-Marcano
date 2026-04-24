@@ -9,11 +9,13 @@ const CompaniesManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [isEditing, setIsEditing] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
   const initialFormState = {
     name: '',
     rif: '',
+    nil: '',
     address: '',
     phone: '',
     contactName: '',
@@ -56,8 +58,10 @@ const CompaniesManagement: React.FC = () => {
       setIsEditing(null);
       loadData();
       setTimeout(() => setMessage(null), 3000);
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Error al procesar la solicitud' });
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Error al procesar la solicitud' });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -66,6 +70,7 @@ const CompaniesManagement: React.FC = () => {
     setFormData({
       name: comp.name,
       rif: comp.rif,
+      nil: comp.nil || '',
       address: comp.address,
       phone: comp.phone,
       contactName: comp.contactName,
@@ -75,9 +80,16 @@ const CompaniesManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('¿Está seguro de eliminar esta empresa?')) {
-      await deleteCompany(id);
+    setShowDeleteConfirm(id);
+  };
+
+  const confirmDelete = async () => {
+    if (showDeleteConfirm) {
+      await deleteCompany(showDeleteConfirm);
+      setShowDeleteConfirm(null);
       loadData();
+      setMessage({ type: 'success', text: 'Empresa eliminada correctamente' });
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
@@ -111,9 +123,40 @@ const CompaniesManagement: React.FC = () => {
       </div>
 
       {message && (
-        <div className={`mb-6 p-4 rounded-lg flex items-center gap-2 ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+        <div className={`mb-6 p-4 rounded-lg flex items-center gap-2 animate-in slide-in-from-top-2 duration-300 ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
           {message.type === 'success' ? <CheckCircle2 className="w-5 h-5"/> : <AlertCircle className="w-5 h-5"/>}
           {message.text}
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-4 mb-6 text-red-600">
+              <div className="p-3 bg-red-100 rounded-full">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">¿Confirmar eliminación?</h3>
+                <p className="text-sm text-slate-500">Esta acción no se puede deshacer.</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowDeleteConfirm(null)}
+                className="flex-1 px-4 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 font-medium transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmDelete}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 font-medium shadow-lg shadow-red-100 transition-colors"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -140,17 +183,30 @@ const CompaniesManagement: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">RIF</label>
-                <input 
-                  type="text"
-                  name="rif"
-                  required
-                  value={formData.rif}
-                  onChange={handleChange}
-                  placeholder="J-12345678-9"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">RIF</label>
+                  <input 
+                    type="text"
+                    name="rif"
+                    required
+                    value={formData.rif}
+                    onChange={handleChange}
+                    placeholder="J-12345678-9"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">NIL</label>
+                  <input 
+                    type="text"
+                    name="nil"
+                    value={formData.nil}
+                    onChange={handleChange}
+                    placeholder="Número NIL"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm"
+                  />
+                </div>
               </div>
 
               <div>
@@ -250,13 +306,23 @@ const CompaniesManagement: React.FC = () => {
                         {/* HOVER OVERLAY */}
                         <div className="absolute inset-0 bg-blue-900/95 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col p-5">
                             <div className="flex justify-between items-start mb-3">
-                                <span className="bg-blue-500/30 text-blue-200 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-blue-400/30">Detalles</span>
-                                <div className="flex gap-1">
-                                    <button onClick={() => handleEdit(comp)} className="p-1.5 bg-white/10 hover:bg-white/20 rounded text-white transition-colors">
+                                <span className="bg-blue-500/30 text-blue-200 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-blue-400/30">Opciones</span>
+                                <div className="flex gap-2">
+                                    <button 
+                                      onClick={() => handleEdit(comp)} 
+                                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors text-xs font-bold"
+                                      title="Modificar"
+                                    >
                                         <PenSquare className="w-3.5 h-3.5" />
+                                        <span>Modificar</span>
                                     </button>
-                                    <button onClick={() => handleDelete(comp.id)} className="p-1.5 bg-red-500/20 hover:bg-red-500/40 rounded text-red-200 transition-colors">
+                                    <button 
+                                      onClick={() => handleDelete(comp.id)} 
+                                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-500/20 hover:bg-red-500/40 rounded-lg text-red-200 transition-colors text-xs font-bold"
+                                      title="Eliminar"
+                                    >
                                         <Trash2 className="w-3.5 h-3.5" />
+                                        <span>Eliminar</span>
                                     </button>
                                 </div>
                             </div>
@@ -267,8 +333,8 @@ const CompaniesManagement: React.FC = () => {
                                     <p className="text-sm text-white font-bold truncate">{comp.name}</p>
                                 </div>
                                 <div>
-                                    <p className="text-[10px] font-bold text-blue-400 uppercase tracking-tighter">RIF</p>
-                                    <p className="text-sm text-blue-50 font-mono">{comp.rif}</p>
+                                    <p className="text-[10px] font-bold text-blue-400 uppercase tracking-tighter">RIF / NIL</p>
+                                    <p className="text-sm text-blue-50 font-mono">{comp.rif} {comp.nil ? `/ ${comp.nil}` : ''}</p>
                                 </div>
                                 <div className="pt-2 border-t border-blue-700/50 flex justify-between items-center">
                                     <div className="flex items-center gap-2">
@@ -304,19 +370,30 @@ const CompaniesManagement: React.FC = () => {
                                 <MapPin className="w-3 h-3" /> {comp.address.substring(0, 40)}...
                              </div>
                           </td>
-                          <td className="px-4 py-3 font-mono text-slate-600 font-medium">{comp.rif}</td>
+                          <td className="px-4 py-3">
+                             <div className="font-mono text-slate-600 font-medium">{comp.rif}</div>
+                             {comp.nil && <div className="text-[10px] text-slate-400 font-mono uppercase">NIL: {comp.nil}</div>}
+                          </td>
                           <td className="px-4 py-3 text-center">
                              <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full text-xs font-bold border border-indigo-100">
                                 {getWorkerCount(comp.name)}
                              </span>
                           </td>
                           <td className="px-4 py-3 text-right">
-                             <div className="flex justify-end gap-2">
-                               <button onClick={() => handleEdit(comp)} className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors">
+                             <div className="flex justify-end gap-3">
+                               <button 
+                                 onClick={() => handleEdit(comp)} 
+                                 className="flex items-center gap-1.5 px-3 py-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors text-xs font-bold"
+                               >
                                   <PenSquare className="w-4 h-4" />
+                                  <span>Modificar</span>
                                </button>
-                               <button onClick={() => handleDelete(comp.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors">
+                               <button 
+                                 onClick={() => handleDelete(comp.id)} 
+                                 className="flex items-center gap-1.5 px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-xs font-bold"
+                               >
                                   <Trash2 className="w-4 h-4" />
+                                  <span>Eliminar</span>
                                </button>
                              </div>
                           </td>

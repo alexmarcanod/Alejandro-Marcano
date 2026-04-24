@@ -28,6 +28,7 @@ export interface Patient {
   
   // Medical
   medicalHistory: string;
+  allergies?: string;
   hasDisability: boolean;
   disabilityDescription?: string;
 
@@ -59,10 +60,11 @@ export interface MedicalAttention {
   patientId: string;
   patientName: string;
   patientCedula: string;
+  reportNumber?: string; // Correlative ID per company
   
   attentionDate: string;
   attentionType: 'Pre Empleo' | 'Pre Vacaciones' | 'Egreso' | 'Periódica' | 'General';
-  reason?: 'Enfermedad Común' | 'Enfermedad Ocupacional' | 'Accidente Común' | 'Accidente Ocupacional';
+  reason?: 'Enfermedad Común' | 'Enfermedad Ocupacional' | 'Accidente Común' | 'Accidente Ocupacional' | 'No Aplica';
   medicalReferral?: string;
   
   // Doctor fields
@@ -78,6 +80,16 @@ export interface MedicalAttention {
   restEndDate: string;
   
   evaluationResult: 'Apto' | 'No Apto' | 'Postpuesta' | 'No Aplica';
+  
+  // Clinical Data (Vitals)
+  weight?: number;
+  height?: number;
+  bmi?: number;
+  bloodPressure?: string;
+  heartRate?: number;
+  respiratoryRate?: number;
+  temperature?: number;
+  oxygenSaturation?: number;
   
   // New Fields for SVE and External Support
   isExternal?: boolean;
@@ -110,6 +122,22 @@ export interface Prescription {
   createdAt: string;
 }
 
+export interface RestValidation {
+  id: string;
+  patientId: string;
+  patientName: string;
+  patientCedula: string;
+  reportNumber?: string;
+  
+  date: string; // YYYY-MM-DD
+  pathology: string;
+  restDays: number;
+  restStartDate: string;
+  restEndDate: string;
+  
+  createdAt: string;
+}
+
 // --- New Modules Interfaces ---
 
 export interface Doctor {
@@ -127,6 +155,7 @@ export interface Company {
   id: string;
   name: string;
   rif: string;
+  nil?: string;
   address: string;
   phone: string;
   contactName: string;

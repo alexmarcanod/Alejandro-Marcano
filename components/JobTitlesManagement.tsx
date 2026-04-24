@@ -48,8 +48,8 @@ const JobTitlesManagement: React.FC = () => {
       setIsEditing(null);
       loadData();
       setTimeout(() => setMessage(null), 3000);
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Error al procesar la solicitud' });
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Error al procesar la solicitud' });
     }
   };
 

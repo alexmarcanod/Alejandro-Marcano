@@ -12,6 +12,7 @@ import {
   ChevronRight, 
   ShieldPlus,
   BookOpenCheck,
+  FileCheck,
   Settings,
   Database
 } from 'lucide-react';
@@ -35,6 +36,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate }) => {
       subItems: ['Paciente', 'Medicos', 'Empresas', 'Usuarios', 'Historia Clínica', 'Cargos', 'Departamento'] 
     },
     { id: 'atencion', label: 'Atención Médica', icon: Stethoscope },
+    { id: 'validacion-reposos', label: 'Validación de reposos', icon: FileCheck },
     { id: 'citas', label: 'Citas', icon: Calendar },
     { id: 'recipe', label: 'Recipe E.', icon: FileText },
     { id: 'reporte', label: 'Reporte', icon: ClipboardList },
@@ -44,7 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate }) => {
       label: 'Informes', 
       icon: FileBarChart,
       hasSubmenu: true,
-      subItems: ['Informes Medicos', 'Informe Ocupacional', 'Reposo Medico', 'Reposos Externos']
+      subItems: ['Informes Medicos', 'Informe Ocupacional', 'Reposo Medico']
     },
     { id: 'sve', label: 'Informe SVE', icon: BookOpenCheck },
     { id: 'datos', label: 'Carga Masiva', icon: Database }, // Nueva opción

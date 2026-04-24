@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { getAllMedicalAttentions, getAllPatients, getCompanies, getDoctors } from '../utils/storage';
-import { MedicalAttention, Patient, Company, Doctor } from '../types';
-import { Printer, ShieldCheck, Building2, Table as TableIcon, FileDown, Users, Stethoscope, PieChart as PieChartIcon } from 'lucide-react';
+import { getAllMedicalAttentions, getAllPatients, getCompanies, getDoctors, getRestValidations } from '../utils/storage';
+import { MedicalAttention, Patient, Company, Doctor, RestValidation } from '../types';
+import { Printer, ShieldCheck, Building2, Table as TableIcon, FileDown, Users, Stethoscope, PieChart as PieChartIcon, ClipboardList } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList, PieChart, Pie } from 'recharts';
 
 type Quarter = 'I' | 'II' | 'III' | 'IV';
@@ -12,9 +12,12 @@ const COLORS_SERIES = ['#1e4ed8', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#
 const SVEReport: React.FC = () => {
   const reportRef = useRef<HTMLDivElement>(null);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [reportType, setReportType] = useState<'monthly' | 'quarterly'>('quarterly');
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter>('I');
   const [allPatients, setAllPatients] = useState<Patient[]>([]);
   const [allAttentions, setAllAttentions] = useState<MedicalAttention[]>([]);
+  const [allRestValidations, setAllRestValidations] = useState<RestValidation[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
@@ -25,16 +28,18 @@ const SVEReport: React.FC = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [pats, atts, comps, docs] = await Promise.all([
+        const [pats, atts, comps, docs, rests] = await Promise.all([
             getAllPatients(), 
             getAllMedicalAttentions(),
             getCompanies(),
-            getDoctors()
+            getDoctors(),
+            getRestValidations()
         ]);
         setAllPatients(pats);
         setAllAttentions(atts);
         setCompanies(comps);
         setDoctors(docs);
+        setAllRestValidations(rests);
         if (docs.length > 0) setSelectedDoctorId(docs[0].id);
       } catch (e) {
         console.error("Error fetching data", e);
@@ -98,6 +103,22 @@ const SVEReport: React.FC = () => {
     return allAttentions.filter(a => patientCedulas.has(a.patientCedula));
   }, [allAttentions, patientsInScope]);
 
+  const restValidationsInScope = useMemo(() => {
+    const patientCedulas = new Set(patientsInScope.map(p => p.cedula));
+    return allRestValidations.filter(r => patientCedulas.has(r.patientCedula));
+  }, [allRestValidations, patientsInScope]);
+
+  const getRangeText = () => {
+    if (reportType === 'quarterly') {
+      return getQuarterRangeText(selectedQuarter, selectedYear);
+    } else {
+      const monthName = getMonthName(selectedMonth);
+      const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+      const monthNameCapitalized = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+      return `Del 01 de ${monthName} al ${lastDay} de ${monthName} de ${selectedYear}`;
+    }
+  };
+
   const getPatientsActiveInMonth = (monthIdx: number, year: number) => {
     const monthlyAttentions = attentionsInScope.filter(att => {
       const attDate = new Date(att.attentionDate + 'T00:00:00');
@@ -126,6 +147,15 @@ const SVEReport: React.FC = () => {
     return Object.entries(distribution).sort((a, b) => b[1] - a[1]);
   }, [patientsInScope]);
 
+  const departmentDistribution = useMemo(() => {
+    const distribution: Record<string, number> = {};
+    patientsInScope.forEach(p => {
+      const dept = p.department || 'SIN DEPARTAMENTO ASIGNADO';
+      distribution[dept] = (distribution[dept] || 0) + 1;
+    });
+    return Object.entries(distribution).sort((a, b) => b[1] - a[1]);
+  }, [patientsInScope]);
+
   const genderDistribution = useMemo(() => {
     const male = patientsInScope.filter(p => p.gender === 'Masculino').length;
     const female = patientsInScope.filter(p => p.gender === 'Femenino').length;
@@ -133,6 +163,27 @@ const SVEReport: React.FC = () => {
       { name: 'Masculino', value: male, fill: '#1d4ed8' },
       { name: 'Femenino', value: female, fill: '#db2777' }
     ];
+  }, [patientsInScope]);
+
+  const ageGroupDistribution = useMemo(() => {
+    const groups: Record<string, number> = {
+      'Menor 18': 0,
+      '18-25': 0,
+      '26-35': 0,
+      '36-45': 0,
+      '46-55': 0,
+      '55+': 0
+    };
+    patientsInScope.forEach(p => {
+      const age = calculateAge(p.birthDate);
+      const group = getAgeGroup(age);
+      groups[group] = (groups[group] || 0) + 1;
+    });
+    return Object.entries(groups).map(([name, value], index) => ({
+      name,
+      value,
+      fill: COLORS_SERIES[index % COLORS_SERIES.length]
+    }));
   }, [patientsInScope]);
 
   const currentCompany = useMemo(() => {
@@ -144,12 +195,34 @@ const SVEReport: React.FC = () => {
   }, [doctors, selectedDoctorId]);
 
   const quarterAttentions = useMemo(() => {
-    const months = getQuarterMonths(selectedQuarter);
-    return attentionsInScope.filter(att => {
-      const d = new Date(att.attentionDate + 'T00:00:00');
-      return d.getFullYear() === selectedYear && months.includes(d.getMonth());
-    });
-  }, [attentionsInScope, selectedYear, selectedQuarter]);
+    if (reportType === 'quarterly') {
+      const months = getQuarterMonths(selectedQuarter);
+      return attentionsInScope.filter(att => {
+        const d = new Date(att.attentionDate + 'T00:00:00');
+        return d.getFullYear() === selectedYear && months.includes(d.getMonth());
+      });
+    } else {
+      return attentionsInScope.filter(att => {
+        const d = new Date(att.attentionDate + 'T00:00:00');
+        return d.getFullYear() === selectedYear && d.getMonth() === selectedMonth;
+      });
+    }
+  }, [attentionsInScope, selectedYear, selectedQuarter, reportType, selectedMonth]);
+
+  const quarterRestValidations = useMemo(() => {
+    if (reportType === 'quarterly') {
+      const months = getQuarterMonths(selectedQuarter);
+      return restValidationsInScope.filter(r => {
+        const d = new Date(r.date + 'T00:00:00');
+        return d.getFullYear() === selectedYear && months.includes(d.getMonth());
+      });
+    } else {
+      return restValidationsInScope.filter(r => {
+        const d = new Date(r.date + 'T00:00:00');
+        return d.getFullYear() === selectedYear && d.getMonth() === selectedMonth;
+      });
+    }
+  }, [restValidationsInScope, selectedYear, selectedQuarter, reportType, selectedMonth]);
 
   const annualOccurrenceSummary = useMemo(() => {
     const summary: Record<number, { ac: number, at: number, ec: number, eo: number }> = {};
@@ -210,7 +283,8 @@ const SVEReport: React.FC = () => {
     accTrabajo: quarterAttentions.filter(a => a.reason === 'Accidente Ocupacional'),
     enfComunes: quarterAttentions.filter(a => a.reason === 'Enfermedad Común'),
     enfOcupacionales: quarterAttentions.filter(a => a.reason === 'Enfermedad Ocupacional'),
-  }), [quarterAttentions]);
+    externalRests: quarterRestValidations
+  }), [quarterAttentions, quarterRestValidations]);
 
   // --- Chart Data Calculators ---
 
@@ -227,40 +301,177 @@ const SVEReport: React.FC = () => {
         { name: 'Accidentes de Trabajo', value: morbidityDetails.accTrabajo.length },
         { name: 'Enfermedades Comunes', value: morbidityDetails.enfComunes.length },
         { name: 'Enfermedades Ocupacionales', value: morbidityDetails.enfOcupacionales.length },
+        { name: 'Reposos Externos', value: morbidityDetails.externalRests.length },
     ];
     return data.filter(item => item.value > 0);
   }, [morbidityDetails]);
 
-  const handleExportWord = () => {
+  const pathologyDistribution = useMemo(() => {
+    const internal: Record<string, { count: number, days: number }> = {};
+    const external: Record<string, { count: number, days: number }> = {};
+
+    // Internal (from attentions with rest)
+    quarterAttentions.forEach(att => {
+      if (att.restDays > 0) {
+        const diag = att.diagnosis.split('\n')[0] || 'SIN DIAGNÓSTICO';
+        if (!internal[diag]) internal[diag] = { count: 0, days: 0 };
+        internal[diag].count++;
+        internal[diag].days += att.restDays;
+      }
+    });
+
+    // External (from validations)
+    quarterRestValidations.forEach(rest => {
+      const diag = rest.pathology.split('\n')[0] || 'SIN DIAGNÓSTICO';
+      if (!external[diag]) external[diag] = { count: 0, days: 0 };
+      external[diag].count++;
+      external[diag].days += rest.restDays;
+    });
+
+    return {
+      internal: Object.entries(internal).sort((a, b) => b[1].days - a[1].days),
+      external: Object.entries(external).sort((a, b) => b[1].days - a[1].days)
+    };
+  }, [quarterAttentions, quarterRestValidations]);
+
+  const top10Morbidity = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const morbidityReasons = ['Enfermedad Común', 'Enfermedad Ocupacional', 'Accidente Común', 'Accidente Ocupacional'];
+
+    // Filter by year to show annual top 10
+    attentionsInScope.filter(att => {
+        const d = new Date(att.attentionDate + 'T00:00:00');
+        const isMorbidity = att.reason && morbidityReasons.includes(att.reason);
+        const hasDiagnosis = att.diagnosis && att.diagnosis.trim() !== '' && att.diagnosis !== 'SIN DIAGNÓSTICO';
+        return d.getFullYear() === selectedYear && isMorbidity && hasDiagnosis;
+    }).forEach(att => {
+      const diag = att.diagnosis.split('\n')[0] || 'SIN DIAGNÓSTICO';
+      counts[diag] = (counts[diag] || 0) + 1;
+    });
+
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, value]) => ({ name, value }));
+  }, [attentionsInScope, selectedYear]);
+
+  const top3QuarterMorbidity = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const morbidityReasons = ['Enfermedad Común', 'Enfermedad Ocupacional', 'Accidente Común', 'Accidente Ocupacional'];
+
+    quarterAttentions.filter(att => {
+        const isMorbidity = att.reason && morbidityReasons.includes(att.reason);
+        const hasDiagnosis = att.diagnosis && att.diagnosis.trim() !== '' && att.diagnosis !== 'SIN DIAGNÓSTICO';
+        return isMorbidity && hasDiagnosis;
+    }).forEach(att => {
+      const diag = att.diagnosis.split('\n')[0] || 'SIN DIAGNÓSTICO';
+      counts[diag] = (counts[diag] || 0) + 1;
+    });
+
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([name, value]) => ({ name, value }));
+  }, [quarterAttentions]);
+
+  const handleExportWord = async () => {
     if (!reportRef.current) return;
-    const content = reportRef.current.innerHTML;
-    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Informe SVE</title><style>body { font-family: 'Arial', sans-serif; font-size: 9pt; } table { border-collapse: collapse; width: 100%; margin-bottom: 10px; } th, td { border: 1px solid #000; padding: 4px; text-align: left; } th { background-color: #f3f4f6; font-weight: bold; } .section-title { font-weight: bold; text-transform: uppercase; border-bottom: 2px solid #000; margin-top: 15px; margin-bottom: 5px; }</style></head><body>";
+    
+    // Clone the report to modify it for export without affecting the UI
+    const clone = reportRef.current.cloneNode(true) as HTMLElement;
+    
+    // Find all SVG elements (charts) and try to replace them with images for Word
+    const svgs = reportRef.current.querySelectorAll('svg');
+    const svgImages: string[] = [];
+    
+    for (let i = 0; i < svgs.length; i++) {
+        const svg = svgs[i];
+        const svgData = new XMLSerializer().serializeToString(svg);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        
+        // Set canvas dimensions to match SVG
+        const svgRect = svg.getBoundingClientRect();
+        canvas.width = svgRect.width || 500;
+        canvas.height = svgRect.height || 300;
+        
+        const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+        
+        await new Promise((resolve) => {
+            img.onload = () => {
+                if (ctx) {
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0);
+                    svgImages.push(canvas.toDataURL('image/png'));
+                }
+                URL.revokeObjectURL(url);
+                resolve(null);
+            };
+            img.src = url;
+        });
+    }
+
+    // Replace SVGs in the clone with the generated images
+    const cloneSvgs = clone.querySelectorAll('svg');
+    cloneSvgs.forEach((svg, index) => {
+        if (svgImages[index]) {
+            const img = document.createElement('img');
+            img.src = svgImages[index];
+            img.style.width = '100%';
+            img.style.maxWidth = '500px';
+            img.style.height = 'auto';
+            svg.parentNode?.replaceChild(img, svg);
+        }
+    });
+
+    const content = clone.innerHTML;
+    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Informe SVE</title><style>body { font-family: 'Arial', sans-serif; font-size: 12pt; text-align: justify; line-height: 1.5; } table { border-collapse: collapse; width: 100%; margin-bottom: 15px; border: 1px solid #000; line-height: 1.5; } th, td { border: 1px solid #000; padding: 8px; text-align: justify; } th { background-color: #1e3a8a; color: #ffffff; font-weight: bold; text-align: center; text-transform: uppercase; } tr:nth-child(even) { background-color: #f3f4f6; } .section-title { font-weight: bold; text-transform: uppercase; border-bottom: 2px solid #000; margin-top: 20px; margin-bottom: 10px; font-size: 14pt; } .chart-container { text-align: center; margin: 25px 0; }</style></head><body>";
     const footer = "</body></html>";
     const sourceHTML = header + content + footer;
     const blob = new Blob(['\ufeff', sourceHTML], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `SVE_${selectedCompanyName || 'Empresa'}_T${selectedQuarter}_${selectedYear}.doc`;
+    const filename = reportType === 'quarterly' 
+      ? `SVE_${selectedCompanyName || 'Empresa'}_T${selectedQuarter}_${selectedYear}.doc`
+      : `SVE_${selectedCompanyName || 'Empresa'}_M${selectedMonth + 1}_${selectedYear}.doc`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   // --- Print Sections ---
   const HeaderSection = () => (
     <div className="flex flex-col items-center mb-10 w-full">
-       <h1 className="text-[22px] font-black text-slate-800 uppercase tracking-tight text-center mb-1 leading-tight">
-          INFORME TRIMESTRAL DE VIGILANCIA EPIDEMIOLÓGICA
+       <h1 className="text-[22pt] font-black text-slate-800 uppercase tracking-tight text-center mb-1 leading-tight">
+          INFORME {reportType === 'quarterly' ? 'TRIMESTRAL' : 'MENSUAL'} DE VIGILANCIA EPIDEMIOLÓGICA
        </h1>
-       <p className="text-md font-semibold text-slate-600 mb-8">
-          {getQuarterRangeText(selectedQuarter, selectedYear)}
+       <p className="text-[14pt] font-semibold text-slate-600 mb-8">
+          {getRangeText()}
        </p>
        
        <div className="w-full border border-blue-100 rounded-xl p-8 bg-slate-50/50 shadow-sm">
-          <div className="grid grid-cols-[180px_1fr] gap-y-4 text-sm">
+          <div className="grid grid-cols-[180px_1fr] gap-y-4 text-[12pt]">
              <span className="font-bold text-slate-600">Entidad de Trabajo:</span>
              <span className="text-slate-900 uppercase font-black tracking-wide">{currentCompany?.name || '---'}</span>
+             
+             <span className="font-bold text-slate-600">RIF:</span>
+             <span className="text-slate-900 font-mono">{currentCompany?.rif || '---'}</span>
+
+             {currentCompany?.nil && (
+               <>
+                 <span className="font-bold text-slate-600">NIL:</span>
+                 <span className="text-slate-900 font-mono">{currentCompany.nil}</span>
+               </>
+             )}
              
              <span className="font-bold text-slate-600">Dirección:</span>
              <span className="text-slate-900 font-medium">{currentCompany?.address || '---'}</span>
@@ -272,42 +483,94 @@ const SVEReport: React.FC = () => {
     </div>
   );
 
-  const SubscriptionTable = ({ type }: { type: 'full' | 'doc' }) => (
-    <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-6 border-t border-slate-200">
-        <div className="text-center">
-            <div className="h-16 border-b border-slate-300 mb-2 flex items-end justify-center pb-1">
-               {/* Espacio para firma */}
-            </div>
-            {currentDoctor ? (
-              <div className="space-y-0.5">
-                <p className="text-[9px] font-black uppercase">{currentDoctor.title} {currentDoctor.firstName}</p>
-                <p className="text-[8px] font-bold text-slate-700">M.P.P.S: {currentDoctor.mpps} {currentDoctor.collegeId && `| C.M: ${currentDoctor.collegeId}`}</p>
-                {currentDoctor.inpsasel && <p className="text-[8px] font-bold text-slate-700">INPSASEL: {currentDoctor.inpsasel}</p>}
-                <p className="text-[8px] text-slate-400 uppercase tracking-widest mt-1">Médico Ocupacional</p>
-              </div>
-            ) : (
-              <>
-                <p className="text-[9px] font-black uppercase">Médico Ocupacional</p>
-                <p className="text-[8px] text-slate-500">Firma y Sello</p>
-              </>
-            )}
+  const ExecutiveSummarySection = () => {
+    const totalConsultas = quarterAttentions.length;
+    const evaluacionesEspecificas = Object.values(examResults).reduce((acc: number, curr: any) => acc + (curr.total || 0), 0);
+    const siniestralidad = morbidityDetails.accTrabajo.length + morbidityDetails.enfOcupacionales.length;
+    const derivaciones = quarterAttentions.filter(a => a.medicalReferral).length;
+
+    const internalRestsCount = morbidityDetails.accComunes.length + morbidityDetails.accTrabajo.length + morbidityDetails.enfComunes.length + morbidityDetails.enfOcupacionales.length;
+    const internalRestsDays = morbidityDetails.accComunes.reduce((acc, curr) => acc + curr.restDays, 0) + 
+                             morbidityDetails.accTrabajo.reduce((acc, curr) => acc + curr.restDays, 0) + 
+                             morbidityDetails.enfComunes.reduce((acc, curr) => acc + curr.restDays, 0) + 
+                             morbidityDetails.enfOcupacionales.reduce((acc, curr) => acc + curr.restDays, 0);
+    
+    const externalRestsCount = morbidityDetails.externalRests.length;
+    const externalRestsDays = morbidityDetails.externalRests.reduce((acc, curr) => acc + curr.restDays, 0);
+
+    return (
+      <div className="flex flex-col items-center w-full min-h-[800px] relative">
+        {/* Watermark Background */}
+        <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none z-0">
+          <ShieldCheck className="w-[500px] h-[500px]" />
         </div>
-        {type === 'full' && (
-            <>
-                <div className="text-center">
-                    <div className="h-16 border-b border-slate-300 mb-2"></div>
-                    <p className="text-[9px] font-black uppercase">Prof. Seguridad e Higiene</p>
-                    <p className="text-[8px] text-slate-500">Firma y Sello</p>
-                </div>
-                <div className="text-center">
-                    <div className="h-16 border-b border-slate-300 mb-2"></div>
-                    <p className="text-[9px] font-black uppercase">Delegados Prevención / CSSL</p>
-                    <p className="text-[8px] text-slate-500">Firma y Sello</p>
-                </div>
-            </>
-        )}
-    </div>
-  );
+
+        <div className="z-10 w-full flex flex-col items-center">
+          <h2 className="text-[18px] font-black text-center mb-2 uppercase">
+            Resumen Gestión de Medicina Ocupacional ({currentCompany?.name || 'Empresa'})
+          </h2>
+          <h3 className="text-[16px] font-bold text-center mb-12 underline decoration-2 underline-offset-4">
+            {reportType === 'quarterly' ? `Trimestre ${selectedQuarter}` : `Mes de ${getMonthName(selectedMonth)}`} ({selectedYear})
+          </h3>
+
+          <div className="space-y-8 text-[12pt] leading-[1.5] text-justify w-full max-w-3xl">
+            <p>
+              Se llevaron a cabo actividades de vigilancia de la salud de los trabajadores para garantizar la actualización de los expedientes médicos y el monitoreo de la morbilidad, obteniendo los siguientes resultados:
+            </p>
+
+            <p>
+              <span className="font-bold">Evaluaciones Clínicas:</span> Se totalizaron {totalConsultas} consultas de Medicina General. {(evaluacionesEspecificas as number) > 0 ? `Se registraron ${evaluacionesEspecificas}` : 'No hubo registro de'} evaluaciones específicas de ingreso, egreso o preventivas programadas.
+            </p>
+            <div className="pl-4 space-y-1">
+              {Object.entries(examResults).map(([key, val]: [string, any]) => (
+                <p key={key} className="text-[11pt]">
+                  • {key}: {val.total > 0 ? `${val.total} consultas` : 'No hubo atención para este aspecto'}.
+                </p>
+              ))}
+            </div>
+
+            <p>
+              <span className="font-bold">Siniestralidad y Morbilidad:</span> Se reporta una tasa de {siniestralidad} accidentes laborales y enfermedades ocupacionales. {derivaciones > 0 ? `Se realizaron ${derivaciones} derivaciones` : 'No fue necesaria la derivación'} de personal a especialistas externos.
+            </p>
+
+            <div className="pt-4">
+              <p className="font-bold mb-4 uppercase">Indicadores de Ausentismo:</p>
+              <table className="w-full border-collapse border border-slate-300">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="border border-slate-300 p-2 text-left">Origen del Reposo</th>
+                    <th className="border border-slate-300 p-2 text-center">Cantidad</th>
+                    <th className="border border-slate-300 p-2 text-center">Días Totales</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="border border-slate-300 p-2">Servicio Médico Interno</td>
+                    <td className="border border-slate-300 p-2 text-center font-bold">{internalRestsCount}</td>
+                    <td className="border border-slate-300 p-2 text-center font-bold">{internalRestsDays}</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-slate-300 p-2">Centros Médicos Externos</td>
+                    <td className="border border-slate-300 p-2 text-center font-bold">{externalRestsCount}</td>
+                    <td className="border border-slate-300 p-2 text-center font-bold">{externalRestsDays}</td>
+                  </tr>
+                  <tr className="bg-slate-100 font-black">
+                    <td className="border border-slate-300 p-2">Consolidado Final</td>
+                    <td className="border border-slate-300 p-2 text-center">{internalRestsCount + externalRestsCount}</td>
+                    <td className="border border-slate-300 p-2 text-center">{internalRestsDays + externalRestsDays}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="mt-auto pt-20 text-center">
+            <p className="text-[12pt] font-bold uppercase tracking-widest text-slate-400">Medicina Ocupacional.</p>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (loading) return <div className="p-8 text-center text-slate-500">Cargando datos epidemiológicos...</div>;
 
@@ -320,7 +583,7 @@ const SVEReport: React.FC = () => {
             <h2 className="text-xl font-bold text-slate-800">Generador de Informe SVE</h2>
          </div>
          
-         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+         <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
             <div className="md:col-span-1">
                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Entidad de Trabajo</label>
                <select 
@@ -346,12 +609,33 @@ const SVEReport: React.FC = () => {
                </select>
             </div>
             <div>
-               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Trimestre</label>
-               <select value={selectedQuarter} onChange={(e) => setSelectedQuarter(e.target.value as Quarter)} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white">
-                   <option value="I">I (Ene-Mar)</option>
-                   <option value="II">II (Abr-Jun)</option>
-                   <option value="III">III (Jul-Sep)</option>
-                   <option value="IV">IV (Oct-Dic)</option>
+               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tipo</label>
+               <select value={reportType} onChange={(e) => setReportType(e.target.value as 'monthly' | 'quarterly')} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white">
+                   <option value="quarterly">Trimestral</option>
+                   <option value="monthly">Mensual</option>
+               </select>
+            </div>
+            <div>
+               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{reportType === 'quarterly' ? 'Trimestre' : 'Mes'}</label>
+               {reportType === 'quarterly' ? (
+                 <select value={selectedQuarter} onChange={(e) => setSelectedQuarter(e.target.value as Quarter)} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white">
+                     <option value="I">I (Ene-Mar)</option>
+                     <option value="II">II (Abr-Jun)</option>
+                     <option value="III">III (Jul-Sep)</option>
+                     <option value="IV">IV (Oct-Dic)</option>
+                 </select>
+               ) : (
+                 <select value={selectedMonth} onChange={(e) => setSelectedMonth(parseInt(e.target.value))} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white">
+                     {Array.from({ length: 12 }).map((_, i) => (
+                       <option key={i} value={i}>{getMonthName(i)}</option>
+                     ))}
+                 </select>
+               )}
+            </div>
+            <div>
+               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Año</label>
+               <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white">
+                   {[2023, 2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
                </select>
             </div>
             <div className="flex gap-2">
@@ -369,28 +653,38 @@ const SVEReport: React.FC = () => {
       {!selectedCompanyName ? (
           <div className="text-center py-20 text-slate-400 animate-in fade-in">
               <TableIcon className="w-16 h-16 mx-auto mb-4 opacity-20" />
-              <p>Seleccione una empresa y un médico para visualizar el reporte trimestral.</p>
+              <p>Seleccione una empresa y un médico para visualizar el reporte {reportType === 'quarterly' ? 'trimestral' : 'mensual'}.</p>
           </div>
       ) : (
-          <div ref={reportRef} className="print-report bg-white p-8 md:p-12 shadow-2xl rounded-xl border border-slate-200 print:shadow-none print:border-0 print:p-0">
+          <div ref={reportRef} className="print-report bg-white p-8 md:p-12 shadow-2xl rounded-xl border border-slate-200 print:shadow-none print:border-0 print:p-0 font-['Arial'] text-[12pt] leading-[1.5]">
             <style>{`
                 @media print {
-                    body { background: white; }
-                    .print-report { width: 100%; max-width: none; }
+                    body { background: white; font-family: 'Arial', sans-serif; font-size: 12pt; text-align: justify; line-height: 1.5; }
+                    .print-report { width: 100%; max-width: none; font-family: 'Arial', sans-serif; font-size: 12pt; text-align: justify; line-height: 1.5; }
                     .page-break { page-break-after: always; padding-top: 20px; }
-                    table { page-break-inside: auto; }
+                    table { page-break-inside: auto; border: 1px solid #000; line-height: 1.5; }
                     tr { page-break-inside: avoid; page-break-after: auto; }
-                    .no-print-chart { display: none !important; } /* If needed to hide specific elements on print */
+                    tr:nth-child(even) { background-color: #f3f4f6 !important; -webkit-print-color-adjust: exact; }
+                    th { background-color: #1e3a8a !important; color: #ffffff !important; -webkit-print-color-adjust: exact; text-align: center !important; }
+                    td { text-align: justify !important; border: 1px solid #000 !important; }
+                    .no-print-chart { display: none !important; }
                 }
-                .section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 15px 0 10px 0; background: #f8fafc; }
-                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10px; }
-                th, td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; }
-                th { background: #f1f5f9; font-weight: bold; text-transform: uppercase; color: #334155; font-size: 8px; }
+                .print-report { font-family: 'Arial', sans-serif; font-size: 12pt; text-align: justify; line-height: 1.5; }
+                .section-title { font-size: 14pt; font-weight: 800; text-transform: uppercase; color: #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 20px 0 10px 0; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12pt; border: 1px solid #000; line-height: 1.5; }
+                th, td { border: 1px solid #000; padding: 8px; text-align: justify; }
+                th { background: #1e3a8a; color: #ffffff; font-weight: bold; text-transform: uppercase; text-align: center; }
+                tr:nth-child(even) { background-color: #f3f4f6; }
                 .sub-title { font-weight: bold; background: #f8fafc; text-align: center; }
                 .bg-total { background-color: #f1f5f9; font-weight: bold; }
-                .text-occurrence { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 25px 0 10px 0; }
-                .chart-container { height: 220px; width: 100%; margin: 10px 0; display: flex; flex-direction: column; align-items: center; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background: #fdfdfd; }
+                .text-occurrence { font-size: 14pt; font-weight: 800; text-transform: uppercase; color: #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 25px 0 10px 0; }
+                .chart-container { height: 250px; width: 100%; margin: 20px 0; display: flex; flex-direction: column; align-items: center; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; background: #fdfdfd; }
             `}</style>
+
+            {/* PAGE 0: EXECUTIVE SUMMARY */}
+            <div className="page-break">
+                <ExecutiveSummarySection />
+            </div>
 
             {/* PAGE 1: DATOS, CARGOS Y DISCRIMINACIONES DEMOGRÁFICAS */}
             <div className="page-break">
@@ -414,6 +708,35 @@ const SVEReport: React.FC = () => {
                         {jobDistribution.length === 0 && (
                             <tr>
                                 <td colSpan={2} className="text-center italic text-slate-400 py-4">No hay datos de nómina registrados.</td>
+                            </tr>
+                        )}
+                    </tbody>
+                    <tfoot>
+                        <tr className="bg-total border-t-2 border-slate-900">
+                            <td className="text-right uppercase font-black">Total General de Trabajadores:</td>
+                            <td className="text-center text-lg font-black">{patientsInScope.length}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <div className="section-title">Distribución de Trabajadores por Departamento</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Departamento</th>
+                            <th className="text-center w-40">Cantidad de Trabajadores</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {departmentDistribution.map(([dept, count]) => (
+                            <tr key={dept}>
+                                <td className="uppercase font-medium">{dept}</td>
+                                <td className="text-center font-black">{count}</td>
+                            </tr>
+                        ))}
+                        {departmentDistribution.length === 0 && (
+                            <tr>
+                                <td colSpan={2} className="text-center italic text-slate-400 py-4">No hay datos de departamentos registrados.</td>
                             </tr>
                         )}
                     </tbody>
@@ -453,6 +776,13 @@ const SVEReport: React.FC = () => {
                                     <td className="text-center font-black">{patientsInScope.length}</td>
                                     <td className="text-center">100%</td>
                                 </tr>
+                                <tr className="bg-total border-t border-slate-300">
+                                    <td className="uppercase">Personas con Discapacidad:</td>
+                                    <td className="text-center font-black">{patientsInScope.filter(p => p.hasDisability).length}</td>
+                                    <td className="text-center">
+                                        {patientsInScope.length > 0 ? ((patientsInScope.filter(p => p.hasDisability).length / patientsInScope.length) * 100).toFixed(1) : 0}%
+                                    </td>
+                                </tr>
                             </tfoot>
                         </table>
                     </div>
@@ -476,7 +806,65 @@ const SVEReport: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="section-title">1.- Registro mensual de la cantidad de trabajadores discriminados</div>
+                <div className="section-title">Distribución General de Trabajadores por Grupo Etario</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start mb-8">
+                    <div className="overflow-hidden">
+                        <table className="mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Grupo Etario</th>
+                                    <th className="text-center">Cantidad</th>
+                                    <th className="text-center">Porcentaje (%)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {ageGroupDistribution.map(group => (
+                                    <tr key={group.name}>
+                                        <td className="font-bold">{group.name}</td>
+                                        <td className="text-center font-black">{group.value}</td>
+                                        <td className="text-center">
+                                            {patientsInScope.length > 0 ? ((group.value / patientsInScope.length) * 100).toFixed(1) : 0}%
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                            <tfoot>
+                                <tr className="bg-total">
+                                    <td className="uppercase">Total Nómina:</td>
+                                    <td className="text-center font-black">{patientsInScope.length}</td>
+                                    <td className="text-center">100%</td>
+                                </tr>
+                                <tr className="bg-total border-t border-slate-300">
+                                    <td className="uppercase">Personas con Discapacidad:</td>
+                                    <td className="text-center font-black">{patientsInScope.filter(p => p.hasDisability).length}</td>
+                                    <td className="text-center">
+                                        {patientsInScope.length > 0 ? ((patientsInScope.filter(p => p.hasDisability).length / patientsInScope.length) * 100).toFixed(1) : 0}%
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    
+                    <div className="h-48 w-full bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col items-center">
+                        <p className="text-[10px] font-black text-slate-500 uppercase mb-4">Gráfico: Proporción por Grupo Etario</p>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={ageGroupDistribution} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold' }} />
+                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
+                                <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ fontSize: '10px', borderRadius: '8px' }} />
+                                <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                                    {ageGroupDistribution.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                                    ))}
+                                    <LabelList dataKey="value" position="top" style={{ fontSize: '10px', fontWeight: 'bold', fill: '#334155' }} />
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                <div className="section-title">Registro mensual de la cantidad de trabajadores discriminados</div>
                 
                 <p className="text-[10px] font-bold mb-2">A. Discriminación por Sexo y Discapacidad (Vinculados a Evaluación)</p>
                 <table>
@@ -490,7 +878,7 @@ const SVEReport: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {getQuarterMonths(selectedQuarter).map(m => {
+                        {(reportType === 'quarterly' ? getQuarterMonths(selectedQuarter) : [selectedMonth]).map(m => {
                             const activeInMonth = getPatientsActiveInMonth(m, selectedYear);
                             return (
                                 <tr key={m}>
@@ -518,7 +906,7 @@ const SVEReport: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {getQuarterMonths(selectedQuarter).map(m => {
+                        {(reportType === 'quarterly' ? getQuarterMonths(selectedQuarter) : [selectedMonth]).map(m => {
                             const activeInMonth = getPatientsActiveInMonth(m, selectedYear);
                             const monthlyAgeStats = getAgeGroupStatsForList(activeInMonth);
                             return (
@@ -534,17 +922,43 @@ const SVEReport: React.FC = () => {
                         })}
                     </tbody>
                 </table>
-                <SubscriptionTable type="full" />
             </div>
 
             {/* PAGE 2: ACCIDENTES, ENFERMEDADES Y OCURRENCIA ANUAL */}
             <div className="page-break">
-                <div className="section-title">2.- Registro de los Accidentes de Trabajo</div>
+                <div className="section-title">1.- Registro de los Accidentes Comunes</div>
                 <table>
                     <thead>
                         <tr>
                             <th className="w-20">Fecha</th>
                             <th>Cargo / Puesto</th>
+                            <th>Departamento</th>
+                            <th>Turno</th>
+                            <th>Lesión / Sistema Afectado</th>
+                            <th className="w-16">Días Rep.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {morbidityDetails.accComunes.length > 0 ? morbidityDetails.accComunes.map(a => (
+                            <tr key={a.id}>
+                                <td>{a.attentionDate}</td>
+                                <td>{allPatients.find(p => p.cedula === a.patientCedula)?.jobTitle || 'N/A'}</td>
+                                <td>{allPatients.find(p => p.cedula === a.patientCedula)?.department || 'N/A'}</td>
+                                <td>{allPatients.find(p => p.cedula === a.patientCedula)?.workSchedule || 'N/A'}</td>
+                                <td>{a.diagnosis}</td>
+                                <td className="text-center font-bold">{a.restDays}</td>
+                            </tr>
+                        )) : <tr><td colSpan={6} className="text-center italic text-slate-400 py-4">No se registraron accidentes comunes en el período.</td></tr>}
+                    </tbody>
+                </table>
+
+                <div className="section-title">1.- Registro de los Accidentes de Trabajo</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th className="w-20">Fecha</th>
+                            <th>Cargo / Puesto</th>
+                            <th>Departamento</th>
                             <th>Turno</th>
                             <th>Lesión / Sistema Afectado</th>
                             <th className="w-16">Días Rep.</th>
@@ -555,20 +969,22 @@ const SVEReport: React.FC = () => {
                             <tr key={a.id}>
                                 <td>{a.attentionDate}</td>
                                 <td>{allPatients.find(p => p.cedula === a.patientCedula)?.jobTitle || 'N/A'}</td>
+                                <td>{allPatients.find(p => p.cedula === a.patientCedula)?.department || 'N/A'}</td>
                                 <td>{allPatients.find(p => p.cedula === a.patientCedula)?.workSchedule || 'N/A'}</td>
                                 <td>{a.diagnosis}</td>
                                 <td className="text-center font-bold">{a.restDays}</td>
                             </tr>
-                        )) : <tr><td colSpan={5} className="text-center italic text-slate-400 py-4">No se registraron accidentes de trabajo en el período.</td></tr>}
+                        )) : <tr><td colSpan={6} className="text-center italic text-slate-400 py-4">No se registraron accidentes de trabajo en el período.</td></tr>}
                     </tbody>
                 </table>
 
-                <div className="section-title">3.- Registro de las Enfermedades Comunes</div>
+                <div className="section-title">3.- Registro de las Enfermedades comunes</div>
                 <table>
                     <thead>
                         <tr>
                             <th className="w-20">Fecha</th>
                             <th>Cargo</th>
+                            <th>Departamento</th>
                             <th>Diagnóstico (CIE-10)</th>
                             <th className="w-16 text-center">Días</th>
                         </tr>
@@ -578,19 +994,21 @@ const SVEReport: React.FC = () => {
                             <tr key={a.id}>
                                 <td>{a.attentionDate}</td>
                                 <td>{allPatients.find(p => p.cedula === a.patientCedula)?.jobTitle || 'N/A'}</td>
+                                <td>{allPatients.find(p => p.cedula === a.patientCedula)?.department || 'N/A'}</td>
                                 <td>{a.diagnosis}</td>
                                 <td className="text-center font-bold">{a.restDays}</td>
                             </tr>
-                        )) : <tr><td colSpan={4} className="text-center italic text-slate-400 py-4">Sin datos registrados.</td></tr>}
+                        )) : <tr><td colSpan={5} className="text-center italic text-slate-400 py-4">Sin datos registrados.</td></tr>}
                     </tbody>
                 </table>
 
-                <div className="section-title">4.- Registro de las Enfermedades Ocupacionales</div>
+                <div className="section-title">4.- Registro de los Enfermedades ocupacionales</div>
                 <table>
                     <thead>
                         <tr>
                             <th className="w-20">Fecha</th>
                             <th>Cargo</th>
+                            <th>Departamento</th>
                             <th>Diagnóstico / Sistema Afectado</th>
                             <th className="w-16 text-center">Días</th>
                         </tr>
@@ -600,12 +1018,91 @@ const SVEReport: React.FC = () => {
                             <tr key={a.id}>
                                 <td>{a.attentionDate}</td>
                                 <td>{allPatients.find(p => p.cedula === a.patientCedula)?.jobTitle || 'N/A'}</td>
+                                <td>{allPatients.find(p => p.cedula === a.patientCedula)?.department || 'N/A'}</td>
                                 <td>{a.diagnosis}</td>
                                 <td className="text-center font-bold">{a.restDays}</td>
                             </tr>
-                        )) : <tr><td colSpan={4} className="text-center italic text-slate-400 py-4">Sin datos registrados.</td></tr>}
+                        )) : <tr><td colSpan={5} className="text-center italic text-slate-400 py-4">Sin datos registrados.</td></tr>}
                     </tbody>
                 </table>
+
+                <div className="section-title">4.1.- Análisis de las 10 Primeras Causas de Morbilidad (Anual {selectedYear})</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <table className="text-[9px]">
+                            <thead>
+                                <tr className="bg-slate-100">
+                                    <th className="w-8 text-center">N°</th>
+                                    <th>Causa de Morbilidad (Diagnóstico)</th>
+                                    <th className="w-16 text-center">Casos</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {top10Morbidity.length > 0 ? top10Morbidity.map((item, idx) => (
+                                    <tr key={idx}>
+                                        <td className="text-center">{idx + 1}</td>
+                                        <td>{item.name}</td>
+                                        <td className="text-center font-bold">{item.value}</td>
+                                    </tr>
+                                )) : <tr><td colSpan={3} className="text-center italic text-slate-400 py-2">Sin datos registrados en el año.</td></tr>}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div className="h-[200px] border border-slate-200 rounded p-2 bg-white">
+                        {top10Morbidity.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={top10Morbidity} layout="vertical" margin={{ left: 10, right: 30, top: 5, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                    <XAxis type="number" hide />
+                                    <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 8 }} />
+                                    <Tooltip contentStyle={{ fontSize: '10px' }} />
+                                    <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]}>
+                                        <LabelList dataKey="value" position="right" style={{ fontSize: '8px', fontWeight: 'bold' }} />
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : <div className="flex items-center justify-center h-full text-[9px] italic text-slate-400">Sin datos para graficar.</div>}
+                    </div>
+                </div>
+
+                <div className="section-title">4.2.- Análisis de las 3 Primeras Causas de Morbilidad del {reportType === 'quarterly' ? `Trimestre (T${selectedQuarter})` : `Mes (${getMonthName(selectedMonth)})`}</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <table className="text-[9px]">
+                            <thead>
+                                <tr className="bg-slate-100">
+                                    <th className="w-8 text-center">N°</th>
+                                    <th>Causa de Morbilidad (Diagnóstico)</th>
+                                    <th className="w-16 text-center">Casos</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {top3QuarterMorbidity.length > 0 ? top3QuarterMorbidity.map((item, idx) => (
+                                    <tr key={idx}>
+                                        <td className="text-center">{idx + 1}</td>
+                                        <td>{item.name}</td>
+                                        <td className="text-center font-bold">{item.value}</td>
+                                    </tr>
+                                )) : <tr><td colSpan={3} className="text-center italic text-slate-400 py-2">Sin datos registrados en el {reportType === 'quarterly' ? 'trimestre' : 'mes'}.</td></tr>}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div className="h-[120px] border border-slate-200 rounded p-2 bg-white">
+                        {top3QuarterMorbidity.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={top3QuarterMorbidity} layout="vertical" margin={{ left: 10, right: 30, top: 5, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                    <XAxis type="number" hide />
+                                    <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 8 }} />
+                                    <Tooltip contentStyle={{ fontSize: '10px' }} />
+                                    <Bar dataKey="value" fill="#10b981" radius={[0, 4, 4, 0]}>
+                                        <LabelList dataKey="value" position="right" style={{ fontSize: '8px', fontWeight: 'bold' }} />
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : <div className="flex items-center justify-center h-full text-[9px] italic text-slate-400">Sin datos para graficar.</div>}
+                    </div>
+                </div>
 
                 <div className="text-occurrence">Relación mensual y anual de la ocurrencia</div>
                 <table>
@@ -648,7 +1145,6 @@ const SVEReport: React.FC = () => {
                         </tr>
                     </tfoot>
                 </table>
-                <SubscriptionTable type="doc" />
             </div>
 
             {/* PAGE 3: EXÁMENES, REFERENCIAS Y REPOSOS */}
@@ -729,7 +1225,7 @@ const SVEReport: React.FC = () => {
                                 <td className="font-bold">{a.medicalReferral}</td>
                                 <td>{a.diagnosis}</td>
                             </tr>
-                        )) : <tr><td colSpan={3} className="text-center italic text-slate-400 py-2">No se realizaron referencias en el trimestre.</td></tr>}
+                        )) : <tr><td colSpan={3} className="text-center italic text-slate-400 py-2">No se realizaron referencias en el {reportType === 'quarterly' ? 'trimestre' : 'mes'}.</td></tr>}
                     </tbody>
                 </table>
 
@@ -746,39 +1242,52 @@ const SVEReport: React.FC = () => {
                     </thead>
                     <tbody>
                         <tr>
-                            <td>Accidentes Comunes</td>
+                            <td colSpan={4} className="bg-slate-100 font-bold text-[9px] uppercase">Reposos Internos (Atención Médica)</td>
+                        </tr>
+                        <tr>
+                            <td className="pl-4">Accidentes Comunes</td>
                             <td className="text-center">{morbidityDetails.accComunes.length}</td>
                             <td className="text-center">{morbidityDetails.accComunes.reduce((acc, curr) => acc + curr.restDays, 0)}</td>
                             <td className="text-center">{morbidityDetails.accComunes.length > 0 ? (morbidityDetails.accComunes.reduce((acc, curr) => acc + curr.restDays, 0) / morbidityDetails.accComunes.length).toFixed(1) : 0}</td>
                         </tr>
                         <tr>
-                            <td>Accidentes de Trabajo</td>
+                            <td className="pl-4">Accidentes de Trabajo</td>
                             <td className="text-center">{morbidityDetails.accTrabajo.length}</td>
                             <td className="text-center">{morbidityDetails.accTrabajo.reduce((acc, curr) => acc + curr.restDays, 0)}</td>
                             <td className="text-center">{morbidityDetails.accTrabajo.length > 0 ? (morbidityDetails.accTrabajo.reduce((acc, curr) => acc + curr.restDays, 0) / morbidityDetails.accTrabajo.length).toFixed(1) : 0}</td>
                         </tr>
                         <tr>
-                            <td>Enfermedades Comunes</td>
+                            <td className="pl-4">Enfermedades Comunes</td>
                             <td className="text-center">{morbidityDetails.enfComunes.length}</td>
                             <td className="text-center">{morbidityDetails.enfComunes.reduce((acc, curr) => acc + curr.restDays, 0)}</td>
                             <td className="text-center">{morbidityDetails.enfComunes.length > 0 ? (morbidityDetails.enfComunes.reduce((acc, curr) => acc + curr.restDays, 0) / morbidityDetails.enfComunes.length).toFixed(1) : 0}</td>
                         </tr>
                         <tr>
-                            <td>Enfermedades Ocupacionales</td>
+                            <td className="pl-4">Enfermedades Ocupacionales</td>
                             <td className="text-center">{morbidityDetails.enfOcupacionales.length}</td>
                             <td className="text-center">{morbidityDetails.enfOcupacionales.reduce((acc, curr) => acc + curr.restDays, 0)}</td>
                             <td className="text-center">{morbidityDetails.enfOcupacionales.length > 0 ? (morbidityDetails.enfOcupacionales.reduce((acc, curr) => acc + curr.restDays, 0) / morbidityDetails.enfOcupacionales.length).toFixed(1) : 0}</td>
+                        </tr>
+                        <tr>
+                            <td colSpan={4} className="bg-slate-100 font-bold text-[9px] uppercase">Reposos Externos (Validación)</td>
+                        </tr>
+                        <tr>
+                            <td className="pl-4">Reposos Externos Validados</td>
+                            <td className="text-center">{morbidityDetails.externalRests.length}</td>
+                            <td className="text-center">{morbidityDetails.externalRests.reduce((acc, curr) => acc + curr.restDays, 0)}</td>
+                            <td className="text-center">{morbidityDetails.externalRests.length > 0 ? (morbidityDetails.externalRests.reduce((acc, curr) => acc + curr.restDays, 0) / morbidityDetails.externalRests.length).toFixed(1) : 0}</td>
                         </tr>
                     </tbody>
                     <tfoot>
                         <tr className="bg-total border-t border-slate-900">
                            <td className="uppercase">Total Consolidado de Reposos:</td>
-                           <td className="text-center">{morbidityDetails.accComunes.length + morbidityDetails.accTrabajo.length + morbidityDetails.enfComunes.length + morbidityDetails.enfOcupacionales.length}</td>
+                           <td className="text-center">{morbidityDetails.accComunes.length + morbidityDetails.accTrabajo.length + morbidityDetails.enfComunes.length + morbidityDetails.enfOcupacionales.length + morbidityDetails.externalRests.length}</td>
                            <td className="text-center font-black">
                               {morbidityDetails.accComunes.reduce((acc, curr) => acc + curr.restDays, 0) + 
                                morbidityDetails.accTrabajo.reduce((acc, curr) => acc + curr.restDays, 0) + 
                                morbidityDetails.enfComunes.reduce((acc, curr) => acc + curr.restDays, 0) + 
-                               morbidityDetails.enfOcupacionales.reduce((acc, curr) => acc + curr.restDays, 0)}
+                               morbidityDetails.enfOcupacionales.reduce((acc, curr) => acc + curr.restDays, 0) +
+                               morbidityDetails.externalRests.reduce((acc, curr) => acc + curr.restDays, 0)}
                            </td>
                            <td></td>
                         </tr>
@@ -818,7 +1327,57 @@ const SVEReport: React.FC = () => {
                     )}
                 </div>
 
-                <SubscriptionTable type="full" />
+                <div className="grid grid-cols-2 gap-4 mt-4 mb-6">
+                    <div>
+                        <div className="flex items-center gap-2 mb-2">
+                            <ClipboardList className="w-3 h-3 text-slate-500" />
+                            <span className="text-[10px] font-black uppercase text-slate-500">Distribución por Patología (Internos)</span>
+                        </div>
+                        <table className="text-[9px]">
+                            <thead>
+                                <tr className="bg-slate-100">
+                                    <th className="text-left">Patología</th>
+                                    <th className="text-center w-12">Casos</th>
+                                    <th className="text-center w-12">Días</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {pathologyDistribution.internal.length > 0 ? pathologyDistribution.internal.map(([path, stats], idx) => (
+                                    <tr key={idx}>
+                                        <td className="font-medium">{path}</td>
+                                        <td className="text-center">{stats.count}</td>
+                                        <td className="text-center font-bold">{stats.days}</td>
+                                    </tr>
+                                )) : <tr><td colSpan={3} className="text-center italic text-slate-400 py-2">Sin reposos internos.</td></tr>}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div>
+                        <div className="flex items-center gap-2 mb-2">
+                            <ClipboardList className="w-3 h-3 text-slate-500" />
+                            <span className="text-[10px] font-black uppercase text-slate-500">Distribución por Patología (Externos)</span>
+                        </div>
+                        <table className="text-[9px]">
+                            <thead>
+                                <tr className="bg-slate-100">
+                                    <th className="text-left">Patología</th>
+                                    <th className="text-center w-12">Casos</th>
+                                    <th className="text-center w-12">Días</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {pathologyDistribution.external.length > 0 ? pathologyDistribution.external.map(([path, stats], idx) => (
+                                    <tr key={idx}>
+                                        <td className="font-medium">{path}</td>
+                                        <td className="text-center">{stats.count}</td>
+                                        <td className="text-center font-bold">{stats.days}</td>
+                                    </tr>
+                                )) : <tr><td colSpan={3} className="text-center italic text-slate-400 py-2">Sin reposos externos.</td></tr>}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             {/* PAGE 4: OTROS REGISTROS Y ESTADÍSTICAS */}
@@ -826,7 +1385,7 @@ const SVEReport: React.FC = () => {
                 <div className="section-title">8.- Registro de Personas con discapacidad atendidos</div>
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded text-[10px]">
                     Total de trabajadores con discapacidad en nómina: <strong>{patientsInScope.filter(p => p.hasDisability).length}</strong>. <br/>
-                    Atenciones realizadas a este group en el trimestre: <strong>{quarterAttentions.filter(a => allPatients.find(p => p.cedula === a.patientCedula)?.hasDisability).length}</strong>.
+                    Atenciones realizadas a este group en el {reportType === 'quarterly' ? 'trimestre' : 'mes'}: <strong>{quarterAttentions.filter(a => allPatients.find(p => p.cedula === a.patientCedula)?.hasDisability).length}</strong>.
                 </div>
 
                 <div className="section-title">9.- Factores de riesgo y procesos peligrosos</div>
@@ -847,6 +1406,7 @@ const SVEReport: React.FC = () => {
                         <tr><td>En la Fuente</td><td>Mantenimiento preventivo de equipos.</td><td>Ejecutado</td></tr>
                         <tr><td>En el Ambiente</td><td>Evaluación de iluminación en puestos administrativos.</td><td>En curso</td></tr>
                         <tr><td>En el Trabajador</td><td>Capacitación en higiene postural y pausas activas.</td><td>Programado</td></tr>
+                        <tr><td>Administrativo</td><td>Reubicaciones de puestos de trabajo.</td><td>Ejecutado</td></tr>
                     </tbody>
                 </table>
 
@@ -861,8 +1421,6 @@ const SVEReport: React.FC = () => {
                         <p className="text-lg font-black">{morbidityDetails.accTrabajo.reduce((acc, curr) => acc + curr.restDays, 0)}</p>
                     </div>
                 </div>
-                
-                <SubscriptionTable type="full" />
             </div>
           </div>
       )}

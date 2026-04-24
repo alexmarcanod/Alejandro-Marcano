@@ -1,5 +1,5 @@
 
-import { Patient, MedicalAttention, Prescription, Doctor, Company, AppUser, JobTitle, Appointment, Department } from '../types';
+import { Patient, MedicalAttention, Prescription, Doctor, Company, AppUser, JobTitle, Appointment, Department, RestValidation } from '../types';
 
 const STORAGE_KEY_PATIENTS = 'alex_consulting_patients';
 const STORAGE_KEY_ATTENTIONS = 'alex_consulting_attentions';
@@ -10,6 +10,8 @@ const STORAGE_KEY_USERS = 'alex_consulting_users';
 const STORAGE_KEY_JOB_TITLES = 'alex_consulting_job_titles';
 const STORAGE_KEY_DEPARTMENTS = 'alex_consulting_departments';
 const STORAGE_KEY_APPOINTMENTS = 'alex_consulting_appointments';
+const STORAGE_KEY_REST_VALIDATIONS = 'alex_consulting_rest_validations';
+const STORAGE_KEY_REPORT_COUNTERS = 'alex_consulting_report_counters';
 
 // --- DATA MANAGEMENT (WEB VERSION) ---
 
@@ -24,7 +26,8 @@ export const exportAllData = (): string => {
     STORAGE_KEY_USERS,
     STORAGE_KEY_JOB_TITLES,
     STORAGE_KEY_DEPARTMENTS,
-    STORAGE_KEY_APPOINTMENTS
+    STORAGE_KEY_APPOINTMENTS,
+    STORAGE_KEY_REST_VALIDATIONS
   ];
 
   keys.forEach(key => {
@@ -107,6 +110,10 @@ export const savePatientToDB = (patientData: Omit<Patient, 'id' | 'createdAt'>):
   return new Promise((resolve, reject) => {
     try {
       setTimeout(() => {
+        const patients = getPatientsFromDB();
+        if (patients.some(p => p.cedula === patientData.cedula)) {
+          return reject(new Error("Ya existe un trabajador registrado con esta cédula."));
+        }
         const newPatient: Patient = {
           ...patientData,
           id: crypto.randomUUID(),
@@ -194,6 +201,18 @@ export const deletePatient = (id: string): Promise<void> => {
 };
 
 // --- Medical Attentions ---
+const getNextReportNumber = (companyName: string): string => {
+  const raw = localStorage.getItem(STORAGE_KEY_REPORT_COUNTERS);
+  const counters = raw ? JSON.parse(raw) : {};
+  const current = counters[companyName] || 0;
+  const next = current + 1;
+  counters[companyName] = next;
+  localStorage.setItem(STORAGE_KEY_REPORT_COUNTERS, JSON.stringify(counters));
+  
+  // Format: ID0000001
+  return `ID${next.toString().padStart(7, '0')}`;
+};
+
 export const getAllMedicalAttentions = (): Promise<MedicalAttention[]> => {
   return new Promise((resolve) => {
     setTimeout(() => {
@@ -202,12 +221,14 @@ export const getAllMedicalAttentions = (): Promise<MedicalAttention[]> => {
   });
 };
 
-export const saveMedicalAttentionToDB = (attentionData: Omit<MedicalAttention, 'id' | 'createdAt'>): Promise<MedicalAttention> => {
+export const saveMedicalAttentionToDB = (attentionData: Omit<MedicalAttention, 'id' | 'createdAt'>, companyName?: string): Promise<MedicalAttention> => {
   return new Promise((resolve, reject) => {
     try {
       setTimeout(() => {
+        const reportNumber = companyName ? getNextReportNumber(companyName) : undefined;
         const newAttention: MedicalAttention = {
             ...attentionData,
+            reportNumber,
             id: crypto.randomUUID(),
             createdAt: new Date().toISOString()
         };
@@ -307,8 +328,12 @@ export const getCompanies = (): Promise<Company[]> => {
 };
 
 export const saveCompany = (data: Omit<Company, 'id' | 'createdAt'>): Promise<Company> => {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     setTimeout(() => {
+      const companies = getItems<Company>(STORAGE_KEY_COMPANIES);
+      if (companies.some(c => c.rif === data.rif)) {
+        return reject(new Error("Ya existe una empresa registrada con este RIF."));
+      }
       const newItem: Company = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
       saveItem(STORAGE_KEY_COMPANIES, newItem);
       resolve(newItem);
@@ -338,8 +363,12 @@ export const getJobTitles = (): Promise<JobTitle[]> => {
 };
 
 export const saveJobTitle = (data: Omit<JobTitle, 'id' | 'createdAt'>): Promise<JobTitle> => {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     setTimeout(() => {
+      const titles = getItems<JobTitle>(STORAGE_KEY_JOB_TITLES);
+      if (titles.some(t => t.name.toLowerCase() === data.name.toLowerCase())) {
+        return reject(new Error("Este cargo ya existe."));
+      }
       const newItem: JobTitle = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
       saveItem(STORAGE_KEY_JOB_TITLES, newItem);
       resolve(newItem);
@@ -369,8 +398,12 @@ export const getDepartments = (): Promise<Department[]> => {
 };
 
 export const saveDepartment = (data: Omit<Department, 'id' | 'createdAt'>): Promise<Department> => {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     setTimeout(() => {
+      const depts = getItems<Department>(STORAGE_KEY_DEPARTMENTS);
+      if (depts.some(d => d.name.toLowerCase() === data.name.toLowerCase())) {
+        return reject(new Error("Este departamento ya existe."));
+      }
       const newItem: Department = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
       saveItem(STORAGE_KEY_DEPARTMENTS, newItem);
       resolve(newItem);
@@ -400,8 +433,15 @@ export const getUsers = (): Promise<AppUser[]> => {
 };
 
 export const saveUser = (data: Omit<AppUser, 'id' | 'createdAt'>): Promise<AppUser> => {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     setTimeout(() => {
+      const users = getItems<AppUser>(STORAGE_KEY_USERS);
+      if (users.some(u => u.username === data.username)) {
+        return reject(new Error("El nombre de usuario ya existe."));
+      }
+      if (users.some(u => u.cedula === data.cedula)) {
+        return reject(new Error("Ya existe un usuario registrado con esta cédula."));
+      }
       const newItem: AppUser = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
       saveItem(STORAGE_KEY_USERS, newItem);
       resolve(newItem);
@@ -464,4 +504,32 @@ export const checkAvailability = async (date: string, time: string, excludeId?: 
     a.status !== 'Cancelada' &&
     a.id !== excludeId
   );
+};
+
+// --- REST VALIDATIONS (VALIDACION DE REPOSOS) ---
+export const getRestValidations = (): Promise<RestValidation[]> => {
+  return new Promise(resolve => setTimeout(() => resolve(getItems<RestValidation>(STORAGE_KEY_REST_VALIDATIONS)), 100));
+};
+
+export const saveRestValidation = (data: Omit<RestValidation, 'id' | 'createdAt'>, companyName?: string): Promise<RestValidation> => {
+  return new Promise(resolve => {
+    setTimeout(() => {
+      const reportNumber = companyName ? getNextReportNumber(companyName) : undefined;
+      const newItem: RestValidation = { 
+        ...data, 
+        id: crypto.randomUUID(), 
+        reportNumber,
+        createdAt: new Date().toISOString() 
+      };
+      saveItem(STORAGE_KEY_REST_VALIDATIONS, newItem);
+      resolve(newItem);
+    }, 100);
+  });
+};
+
+export const deleteRestValidation = (id: string): Promise<void> => {
+  return new Promise(resolve => {
+    deleteItemInList<RestValidation>(STORAGE_KEY_REST_VALIDATIONS, id);
+    resolve();
+  });
 };

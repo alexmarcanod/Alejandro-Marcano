@@ -3,10 +3,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, Printer, FileText, AlertCircle, ChevronRight, 
   User, Building2, ClipboardList, Briefcase, Activity, 
-  Calendar, ShieldCheck, ArrowLeft, Clock, Save, CheckCircle2, X, ListPlus
+  Calendar, ShieldCheck, ArrowLeft, Clock, Save, CheckCircle2, X, ListPlus, UserCog
 } from 'lucide-react';
-import { findPatientByCedula, getMedicalAttentionsByCedula, getDoctors, saveMedicalAttentionToDB } from '../utils/storage';
-import { Patient, MedicalAttention, Doctor } from '../types';
+import { findPatientByCedula, getMedicalAttentionsByCedula, getDoctors, saveMedicalAttentionToDB, getCompanies } from '../utils/storage';
+import { Patient, MedicalAttention, Doctor, Company } from '../types';
 import { pathologies, Pathology } from '../utils/nandaData';
 
 interface MedicalReportGeneratorProps {
@@ -24,6 +24,8 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
   const [attentions, setAttentions] = useState<MedicalAttention[]>([]);
   const [selectedAttention, setSelectedAttention] = useState<MedicalAttention | null>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [selectedDoctorId, setSelectedDoctorId] = useState('');
 
   // --- External Input State (For 'external-sick-leave' mode) ---
   const [isSaving, setIsSaving] = useState(false);
@@ -33,7 +35,7 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
 
   const [externalData, setExternalData] = useState({
     attentionDate: new Date().toISOString().split('T')[0],
-    reason: 'Enfermedad Común' as MedicalAttention['reason'],
+    reason: 'No Aplica' as MedicalAttention['reason'],
     diagnosis: '',
     restDays: 1,
     externalDoctor: '',
@@ -43,12 +45,21 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
 
   // --- Load Reference Data ---
   useEffect(() => {
-    const fetchDoctors = async () => {
-        const docs = await getDoctors();
+    const fetchData = async () => {
+        const [docs, comps] = await Promise.all([getDoctors(), getCompanies()]);
         setDoctors(docs);
+        setCompanies(comps);
+        if (docs.length > 0) setSelectedDoctorId(docs[0].id);
     };
-    fetchDoctors();
+    fetchData();
   }, []);
+
+  // Update selectedDoctorId when attention is selected (default to attention's doctor if available)
+  useEffect(() => {
+    if (selectedAttention?.doctorId) {
+      setSelectedDoctorId(selectedAttention.doctorId);
+    }
+  }, [selectedAttention]);
 
   // Handle click outside for CIE-10 dropdown
   useEffect(() => {
@@ -138,7 +149,7 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
         doctorName: validatorDoctor ? `${validatorDoctor.title} ${validatorDoctor.firstName}` : 'Validador Interno'
       };
 
-      const saved = await saveMedicalAttentionToDB(newAtt);
+      const saved = await saveMedicalAttentionToDB(newAtt, patient.company);
       setSuccess('Reposo externo validado y guardado correctamente.');
       setSelectedAttention(saved);
       // Refresh list
@@ -181,23 +192,34 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
 
   // --- Sub-Components for Report Layouts ---
 
-  const ReportHeader = () => (
-    <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-6">
-      <div className="flex items-center gap-3">
-        <div className="w-14 h-14 bg-blue-900 rounded-xl flex items-center justify-center text-white print:border print:border-black">
-          <ShieldCheck className="w-10 h-10" />
+  const ReportHeader = () => {
+    const company = companies.find(c => c.name === patient?.company);
+    return (
+      <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-14 h-14 bg-blue-900 rounded-xl flex items-center justify-center text-white print:border print:border-black">
+            <ShieldCheck className="w-10 h-10" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black uppercase tracking-tight text-slate-900">{patient?.company || 'Empresa'}</h1>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-tight">
+              Servicio Medico<br/>
+              {company?.rif ? `RIF: ${company.rif}` : ''}
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-xl font-black uppercase tracking-tight text-slate-900">Alex Consulting</h1>
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-tight">Servicios Médicos Ocupacionales<br/>RIF: J-12345678-9</p>
+        <div className="text-right">
+          <h2 className="text-sm font-black uppercase text-slate-800 underline decoration-2 underline-offset-4">{getReportTitle()}</h2>
+          <div className="mt-2 space-y-0.5">
+            <p className="text-[10px] text-slate-500 font-mono uppercase">FECHA EMISIÓN: {new Date().toLocaleDateString()}</p>
+            {selectedAttention?.reportNumber && (
+              <p className="text-[10px] text-blue-700 font-black font-mono uppercase">N° INFORME: {selectedAttention.reportNumber}</p>
+            )}
+          </div>
         </div>
       </div>
-      <div className="text-right">
-        <h2 className="text-sm font-black uppercase text-slate-800 underline decoration-2 underline-offset-4">{getReportTitle()}</h2>
-        <p className="text-[10px] text-slate-500 mt-2 font-mono">FECHA EMISIÓN: {new Date().toLocaleDateString()}</p>
-      </div>
-    </div>
-  );
+    );
+  };
 
   const PatientInfoBox = ({ full }: { full?: boolean }) => (
     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 print:bg-white print:border-slate-300">
@@ -231,7 +253,7 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
   );
 
   const SignSection = ({ doctorId }: { doctorId?: string }) => {
-    const docInfo = getDoctorSignInfo(doctorId);
+    const docInfo = getDoctorSignInfo(doctorId || selectedDoctorId);
     return (
       <div className="mt-16 flex justify-center">
         <div className="w-64 text-center">
@@ -255,7 +277,29 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
              <FileText className="w-6 h-6 text-blue-600" />
              {getReportTitle()}
            </h2>
-           <p className="text-slate-500 text-sm">Validación de certificados externos para SVE.</p>
+           <p className="text-slate-500 text-sm">Generación de documentos médicos oficiales.</p>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-2 shadow-sm">
+              <UserCog className="w-4 h-4 text-slate-400" />
+              <select 
+                  value={selectedDoctorId}
+                  onChange={(e) => setSelectedDoctorId(e.target.value)}
+                  className="text-sm font-bold text-slate-700 outline-none bg-transparent"
+              >
+                  {doctors.map(d => <option key={d.id} value={d.id}>{d.title} {d.firstName}</option>)}
+              </select>
+          </div>
+          {patient && (
+            <button 
+              onClick={() => window.print()}
+              className="flex items-center gap-2 px-6 py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 transition-all shadow-lg hover:shadow-xl active:scale-95 font-bold"
+            >
+              <Printer className="w-5 h-5" />
+              Imprimir Reporte
+            </button>
+          )}
         </div>
       </div>
 
@@ -346,6 +390,7 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
                             <option value="Accidente Común">Accidente Común</option>
                             <option value="Enfermedad Ocupacional">Enfermedad Ocupacional</option>
                             <option value="Accidente Ocupacional">Accidente Ocupacional</option>
+                            <option value="No Aplica">No Aplica</option>
                         </select>
                     </div>
                     <div>
@@ -483,13 +528,25 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
       {selectedAttention && patient && (
         <div className="animate-in fade-in zoom-in-95 duration-500">
             <div className="flex justify-between items-center mb-6 print:hidden">
-                <button onClick={() => setSelectedAttention(null)} className="text-slate-500 hover:text-slate-800 flex items-center gap-1 text-sm font-medium">
-                    <ArrowLeft className="w-4 h-4" /> Volver
-                </button>
-                <button onClick={() => window.print()} className="px-6 py-2 bg-slate-800 text-white rounded-lg flex items-center gap-2 font-bold shadow-lg">
-                    <Printer className="w-4 h-4" /> Imprimir Documento
-                </button>
-            </div>
+        <div className="flex items-center gap-4">
+          <button onClick={() => setSelectedAttention(null)} className="text-slate-500 hover:text-slate-800 flex items-center gap-1 text-sm font-medium">
+              <ArrowLeft className="w-4 h-4" /> Volver
+          </button>
+          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5">
+            <UserCog className="w-4 h-4 text-slate-400" />
+            <select 
+              value={selectedDoctorId}
+              onChange={(e) => setSelectedDoctorId(e.target.value)}
+              className="text-sm font-bold text-slate-700 outline-none bg-transparent"
+            >
+              {doctors.map(d => <option key={d.id} value={d.id}>{d.title} {d.firstName}</option>)}
+            </select>
+          </div>
+        </div>
+        <button onClick={() => window.print()} className="px-6 py-2 bg-slate-800 text-white rounded-lg flex items-center gap-2 font-bold shadow-lg">
+            <Printer className="w-4 h-4" /> Imprimir Documento
+        </button>
+      </div>
 
             {/* PAPER */}
             <div className="bg-white shadow-2xl border border-slate-200 w-full max-w-[216mm] mx-auto min-h-[279mm] p-[15mm] print:shadow-none print:border-0 print:p-0 flex flex-col">
@@ -562,9 +619,9 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
                   </div>
                 )}
 
-                <SignSection doctorId={selectedAttention.doctorId} />
+                <SignSection doctorId={selectedDoctorId} />
                 <div className="mt-auto pt-4 border-t border-slate-100 text-[8px] text-slate-400 text-center uppercase tracking-tighter">
-                    Documento electrónico generado por Alex Consulting System v2.4 - Registro de Vigilancia Epidemiológica {selectedAttention.isExternal ? '(Validación Externa)' : '(Atención Interna)'}
+                    Documento electrónico generado por Sistema de Vigilancia Epidemiológica {selectedAttention.isExternal ? '(Validación Externa)' : '(Atención Interna)'}
                 </div>
             </div>
         </div>
@@ -573,7 +630,17 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
       {/* 5. INFORME OCUPACIONAL (HISTÓRICO) */}
       {patient && type === 'occupational' && (
         <div className="animate-in fade-in slide-in-from-bottom-6 duration-700">
-            <div className="flex justify-end mb-6 print:hidden">
+            <div className="flex justify-end items-center gap-4 mb-6 print:hidden">
+                <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5">
+                    <UserCog className="w-4 h-4 text-slate-400" />
+                    <select 
+                        value={selectedDoctorId}
+                        onChange={(e) => setSelectedDoctorId(e.target.value)}
+                        className="text-sm font-bold text-slate-700 outline-none bg-transparent"
+                    >
+                        {doctors.map(d => <option key={d.id} value={d.id}>{d.title} {d.firstName}</option>)}
+                    </select>
+                </div>
                 <button onClick={() => window.print()} className="px-6 py-2 bg-slate-900 text-white rounded-lg flex items-center gap-2 font-bold shadow-lg">
                     <Printer className="w-4 h-4" /> Imprimir Antecedentes
                 </button>
@@ -622,9 +689,9 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
                     </table>
                 </div>
 
-                <SignSection />
-                <div className="mt-auto pt-4 text-[8px] text-slate-300 text-center font-mono">
-                    GENERADO POR ALEX CONSULTING v2.4 | {new Date().toISOString()}
+                <SignSection doctorId={selectedDoctorId} />
+                <div className="mt-auto pt-4 text-[8px] text-slate-300 text-center font-mono uppercase">
+                    Documento generado por Sistema de Vigilancia Epidemiológica | {new Date().toISOString()}
                 </div>
             </div>
         </div>

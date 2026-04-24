@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, User, Calendar, AlertCircle, Save, CheckCircle2, 
   Stethoscope, Clock, FileCheck, Plus, X, ListPlus, 
-  PenSquare, Trash2, ArrowLeft, AlertTriangle, Target, Ambulance, ClipboardList, BookOpen
+  PenSquare, Trash2, ArrowLeft, AlertTriangle, Target, Ambulance, ClipboardList, BookOpen, Activity
 } from 'lucide-react';
 import { 
   findPatientByCedula, 
@@ -55,7 +55,15 @@ const MedicalAttention: React.FC = () => {
     recommendations: '', // Nuevo
     restDays: 0,
     evaluationResult: 'Apto' as 'Apto' | 'No Apto' | 'Postpuesta' | 'No Aplica',
-    doctorId: '' // New Field
+    doctorId: '', // New Field
+    // Vitals
+    weight: undefined as number | undefined,
+    height: undefined as number | undefined,
+    bloodPressure: '',
+    heartRate: undefined as number | undefined,
+    respiratoryRate: undefined as number | undefined,
+    temperature: undefined as number | undefined,
+    oxygenSaturation: undefined as number | undefined
   });
 
   // Load Doctors on Mount
@@ -83,14 +91,21 @@ const MedicalAttention: React.FC = () => {
     setFormData({
       attentionDate: new Date().toISOString().split('T')[0],
       attentionType: 'General',
-      reason: 'Enfermedad Común',
+      reason: 'No Aplica',
       medicalReferral: '',
       diagnosis: '',
       observations: '',
       recommendations: '',
       restDays: 0,
       evaluationResult: 'Apto',
-      doctorId: ''
+      doctorId: '',
+      weight: undefined,
+      height: undefined,
+      bloodPressure: '',
+      heartRate: undefined,
+      respiratoryRate: undefined,
+      temperature: undefined,
+      oxygenSaturation: undefined
     });
   };
 
@@ -180,7 +195,14 @@ const MedicalAttention: React.FC = () => {
       recommendations: attention.recommendations || '',
       restDays: attention.restDays,
       evaluationResult: attention.evaluationResult,
-      doctorId: attention.doctorId || ''
+      doctorId: attention.doctorId || '',
+      weight: attention.weight,
+      height: attention.height,
+      bloodPressure: attention.bloodPressure || '',
+      heartRate: attention.heartRate,
+      respiratoryRate: attention.respiratoryRate,
+      temperature: attention.temperature,
+      oxygenSaturation: attention.oxygenSaturation
     });
   };
 
@@ -259,7 +281,16 @@ const MedicalAttention: React.FC = () => {
       restEndDate: getRestEndDate(formData.attentionDate, formData.restDays),
       evaluationResult: formData.evaluationResult,
       doctorId: formData.doctorId,
-      doctorName: doctorName
+      doctorName: doctorName,
+      // Vitals
+      weight: formData.weight,
+      height: formData.height,
+      bmi: (formData.weight && formData.height) ? Number((formData.weight / ((formData.height/100) ** 2)).toFixed(2)) : undefined,
+      bloodPressure: formData.bloodPressure,
+      heartRate: formData.heartRate,
+      respiratoryRate: formData.respiratoryRate,
+      temperature: formData.temperature,
+      oxygenSaturation: formData.oxygenSaturation
     };
 
     try {
@@ -274,7 +305,7 @@ const MedicalAttention: React.FC = () => {
         setAttentionsList(list);
       } else {
         // CREATE
-        await saveMedicalAttentionToDB(dataToSave);
+        await saveMedicalAttentionToDB(dataToSave, currentPatient.company);
         setActionSuccess("Atención registrada correctamente.");
         resetForm();
       }
@@ -366,7 +397,7 @@ const MedicalAttention: React.FC = () => {
                     <option key={doc.id} value={doc.id}>{doc.title} {doc.firstName}</option>
                   ))}
                 </select>
-                {doctors.length === 0 && <p className="text-[10px] text-red-500 mt-1">No hay médicos registrados. Ir a Archivo > Médicos</p>}
+                {doctors.length === 0 && <p className="text-[10px] text-red-500 mt-1">No hay médicos registrados. Ir a Archivo &gt; Médicos</p>}
               </div>
 
               <div>
@@ -399,7 +430,186 @@ const MedicalAttention: React.FC = () => {
                   <option value="Enfermedad Ocupacional">Enfermedad Ocupacional</option>
                   <option value="Accidente Común">Accidente Común</option>
                   <option value="Accidente Ocupacional">Accidente Ocupacional</option>
+                  <option value="No Aplica">No Aplica</option>
                 </select>
+              </div>
+            </div>
+        </div>
+
+        {/* Signos Vitales */}
+        <div className="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-emerald-50 px-6 py-4 border-b border-emerald-100 flex items-center gap-2">
+              <Activity className="w-5 h-5 text-emerald-600" />
+              <h3 className="font-semibold text-emerald-900">Signos Vitales y Antropometría</h3>
+            </div>
+            <div className="p-6 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Peso (kg)</label>
+                <input 
+                  type="number" 
+                  step="0.1"
+                  name="weight"
+                  value={formData.weight || ''}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0.0"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Talla (cm)</label>
+                <input 
+                  type="number" 
+                  name="height"
+                  value={formData.height || ''}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">T.A. (mmHg)</label>
+                <input 
+                  type="text" 
+                  name="bloodPressure"
+                  value={formData.bloodPressure}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="120/80"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">F.C. (bpm)</label>
+                <input 
+                  type="number" 
+                  name="heartRate"
+                  value={formData.heartRate || ''}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">F.R. (rpm)</label>
+                <input 
+                  type="number" 
+                  name="respiratoryRate"
+                  value={formData.respiratoryRate || ''}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Temp (°C)</label>
+                <input 
+                  type="number" 
+                  step="0.1"
+                  name="temperature"
+                  value={formData.temperature || ''}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0.0"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">SatO2 (%)</label>
+                <input 
+                  type="number" 
+                  name="oxygenSaturation"
+                  value={formData.oxygenSaturation || ''}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+        </div>
+
+        {/* Signos Vitales */}
+        <div className="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-emerald-50 px-6 py-4 border-b border-emerald-100 flex items-center gap-2">
+              <Activity className="w-5 h-5 text-emerald-600" />
+              <h3 className="font-semibold text-emerald-900">Signos Vitales y Antropometría</h3>
+            </div>
+            <div className="p-6 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Peso (kg)</label>
+                <input 
+                  type="number" 
+                  step="0.1"
+                  name="weight"
+                  value={formData.weight || ''}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0.0"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Talla (cm)</label>
+                <input 
+                  type="number" 
+                  name="height"
+                  value={formData.height || ''}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">T.A. (mmHg)</label>
+                <input 
+                  type="text" 
+                  name="bloodPressure"
+                  value={formData.bloodPressure}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="120/80"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">F.C. (bpm)</label>
+                <input 
+                  type="number" 
+                  name="heartRate"
+                  value={formData.heartRate || ''}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">F.R. (rpm)</label>
+                <input 
+                  type="number" 
+                  name="respiratoryRate"
+                  value={formData.respiratoryRate || ''}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Temp (°C)</label>
+                <input 
+                  type="number" 
+                  step="0.1"
+                  name="temperature"
+                  value={formData.temperature || ''}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0.0"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">SatO2 (%)</label>
+                <input 
+                  type="number" 
+                  name="oxygenSaturation"
+                  value={formData.oxygenSaturation || ''}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0"
+                />
               </div>
             </div>
         </div>
