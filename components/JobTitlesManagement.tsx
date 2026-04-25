@@ -21,11 +21,16 @@ const JobTitlesManagement: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const data = await getJobTitles();
-    // Sort alphabetically
-    const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
-    setJobTitles(sorted);
-    setLoading(false);
+    try {
+      const data = await getJobTitles();
+      // Sort alphabetically
+      const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
+      setJobTitles(sorted);
+    } catch (error) {
+      console.error("Error loading job titles:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -2,6 +2,9 @@
 
 Para que la integración con Supabase funcione correctamente, debes ejecutar el siguiente script SQL en el **SQL Editor** de tu proyecto de Supabase.
 
+> **IMPORTANTE:** Si después de ejecutar el script el sistema muestra errores indicando que no encuentra columnas (ej. 'contactName'), ejecute el siguiente comando en el Editor SQL de Supabase para refrescar el sistema:
+> `NOTIFY pgrst, 'reload_schema';`
+
 ```sql
 -- Tabla de Pacientes
 CREATE TABLE patients (
@@ -46,15 +49,15 @@ CREATE TABLE doctors (
 
 -- Tabla de Empresas
 CREATE TABLE companies (
-  id UUID PRIMARY KEY,
-  name TEXT NOT NULL,
-  rif TEXT UNIQUE NOT NULL,
-  nil TEXT,
-  address TEXT,
-  phone TEXT,
-  contactName TEXT,
-  contactPhone TEXT,
-  createdAt TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  "id" UUID PRIMARY KEY,
+  "name" TEXT NOT NULL,
+  "rif" TEXT UNIQUE NOT NULL,
+  "nil" TEXT,
+  "address" TEXT,
+  "phone" TEXT,
+  "contactName" TEXT,
+  "contactPhone" TEXT,
+  "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Tabla de Atenciones Médicas
@@ -140,6 +143,7 @@ CREATE TABLE app_users (
   username TEXT UNIQUE NOT NULL,
   password TEXT,
   role TEXT,
+  modules JSONB, -- Nuevo: Lista de módulos permitidos
   createdAt TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

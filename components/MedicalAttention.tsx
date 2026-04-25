@@ -10,7 +10,8 @@ import {
   getMedicalAttentionsByCedula, 
   updateMedicalAttention, 
   deleteMedicalAttention,
-  getDoctors 
+  getDoctors,
+  updatePatient
 } from '../utils/storage';
 import { pathologies, Pathology, medicalSpecialties } from '../utils/nandaData';
 import { Patient, MedicalAttention as IMedicalAttention, Doctor } from '../types';
@@ -306,6 +307,12 @@ const MedicalAttention: React.FC = () => {
       } else {
         // CREATE
         await saveMedicalAttentionToDB(dataToSave, currentPatient.company);
+        
+        // If it's an "Egreso" attention, mark patient as such
+        if (formData.attentionType === 'Egreso') {
+          await updatePatient(currentPatient.id, { status: 'Egreso' });
+        }
+        
         setActionSuccess("Atención registrada correctamente.");
         resetForm();
       }

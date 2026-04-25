@@ -49,20 +49,25 @@ const PatientRegistration: React.FC = () => {
     jobTitle: '',
     workSchedule: '',
     entryDate: '',
-    employmentStatus: 'fijo'
+    employmentStatus: 'fijo',
+    status: 'Activo'
   });
 
   // Load Companies, JobTitles and Departments on mount
   useEffect(() => {
     const fetchExternalData = async () => {
-      const comps = await getCompanies();
-      setCompaniesList(comps);
-      
-      const jobs = await getJobTitles();
-      setJobTitlesList(jobs);
-
-      const depts = await getDepartments();
-      setDepartmentsList(depts);
+      try {
+        const comps = await getCompanies();
+        setCompaniesList(comps);
+        
+        const jobs = await getJobTitles();
+        setJobTitlesList(jobs);
+  
+        const depts = await getDepartments();
+        setDepartmentsList(depts);
+      } catch (error) {
+        console.error("Error fetching external data for patient registration:", error);
+      }
     };
     fetchExternalData();
   }, []);
@@ -99,7 +104,8 @@ const PatientRegistration: React.FC = () => {
       jobTitle: '',
       workSchedule: '',
       entryDate: '',
-      employmentStatus: 'fijo'
+      employmentStatus: 'fijo',
+      status: 'Activo'
     });
   };
 
@@ -179,7 +185,7 @@ const PatientRegistration: React.FC = () => {
       } as Patient;
 
       if (activeTab === 'add') {
-        await savePatientToDB(dataToSave);
+        await savePatientToDB({ ...dataToSave, status: 'Activo' });
         setSuccessMsg("Paciente registrado exitosamente");
         resetForm();
       } else if (activeTab === 'edit' && foundPatientId) {

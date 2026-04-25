@@ -182,18 +182,18 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
 
   const getReportTitle = () => {
     switch (type) {
-      case 'medical': return 'Informe Médico';
-      case 'occupational': return 'Informe de Antecedentes Ocupacionales';
-      case 'sick-leave': return 'Constancia de Reposo Médico';
+      case 'medical': return 'Informe Médico Ocupacional';
+      case 'occupational': return 'Informe Médico Ocupacional';
+      case 'sick-leave': return 'Reposo Médico';
       case 'external-sick-leave': return 'Validación de Reposo Externo';
-      default: return 'Reporte Médico';
+      default: return 'Informe Médico Ocupacional';
     }
   };
 
   // --- Sub-Components for Report Layouts ---
 
   const ReportHeader = () => {
-    const company = companies.find(c => c.name === patient?.company);
+    const selectedDoctor = doctors.find(d => d.id === selectedDoctorId);
     return (
       <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-6">
         <div className="flex items-center gap-3">
@@ -201,15 +201,17 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
             <ShieldCheck className="w-10 h-10" />
           </div>
           <div>
-            <h1 className="text-xl font-black uppercase tracking-tight text-slate-900">{patient?.company || 'Empresa'}</h1>
+            <h1 className="text-xl font-black uppercase tracking-tight text-slate-900">{selectedDoctor?.firstName || 'MÉDICO TRATANTE'}</h1>
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-tight">
-              Servicio Medico<br/>
-              {company?.rif ? `RIF: ${company.rif}` : ''}
+              Medicina Ocupacional<br/>
+              {selectedDoctor?.cedula ? `RIF: ${selectedDoctor.cedula}` : ''}
             </p>
           </div>
         </div>
         <div className="text-right">
-          <h2 className="text-sm font-black uppercase text-slate-800 underline decoration-2 underline-offset-4">{getReportTitle()}</h2>
+          <h2 className="text-sm font-black uppercase text-slate-800 underline decoration-2 underline-offset-4">
+            {type === 'sick-leave' ? 'Reposo Médico' : 'Informe Médico Ocupacional'}
+          </h2>
           <div className="mt-2 space-y-0.5">
             <p className="text-[10px] text-slate-500 font-mono uppercase">FECHA EMISIÓN: {new Date().toLocaleDateString()}</p>
             {selectedAttention?.reportNumber && (
@@ -259,7 +261,7 @@ const MedicalReportGenerator: React.FC<MedicalReportGeneratorProps> = ({ type })
         <div className="w-64 text-center">
           <div className="h-16 mb-2 border-b border-slate-900"></div>
           <p className="text-xs font-black uppercase text-slate-900">{docInfo.name}</p>
-          <p className="text-[9px] font-bold text-slate-500 uppercase">Médico Ocupacional (Validador)</p>
+          <p className="text-[9px] font-bold text-slate-500 uppercase">Medicina Ocupacional</p>
           <p className="text-[9px] text-slate-600">MPPS: {docInfo.mpps} {docInfo.college && `| CM: ${docInfo.college}`}</p>
           {docInfo.inpsasel && <p className="text-[9px] text-slate-600">INPSASEL: {docInfo.inpsasel}</p>}
         </div>

@@ -16,16 +16,17 @@ import {
   Settings,
   Database
 } from 'lucide-react';
-import { MenuItem } from '../types';
+import { MenuItem, AppUser } from '../types';
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   onNavigate: (view: string) => void;
+  user: AppUser;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate }) => {
-  const [expandedMenu, setExpandedMenu] = useState<string | null>('archivo');
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate, user }) => {
+  const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
   const menuItems: MenuItem[] = [
     { 
@@ -49,9 +50,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate }) => {
       subItems: ['Informes Medicos', 'Informe Ocupacional', 'Reposo Medico']
     },
     { id: 'sve', label: 'Informe SVE', icon: BookOpenCheck },
-    { id: 'datos', label: 'Carga Masiva', icon: Database }, // Nueva opción
+    { id: 'datos', label: 'Carga Masiva', icon: Database },
     { id: 'configuracion', label: 'Configuración', icon: Settings },
-  ];
+  ].filter(item => {
+    // If modules is not defined or empty, allow everything for Admin role as fallback
+    if (user.role === 'Administrador') return true;
+    
+    // Explicit module check
+    const allowedModules = user.modules || [];
+    return allowedModules.includes(item.id);
+  });
 
   const toggleSubmenu = (id: string) => {
     if (expandedMenu === id) {

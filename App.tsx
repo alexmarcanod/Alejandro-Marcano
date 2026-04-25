@@ -19,21 +19,15 @@ import RestValidation from './components/RestValidation';
 import DataImport from './components/DataImport';
 import Settings from './components/Settings';
 import ClinicalEvaluationsSummary from './components/ClinicalEvaluationsSummary';
-import { Menu, Calendar, Clock, CheckCircle2, ClipboardList, Building2, Users, ChevronRight } from 'lucide-react';
+import Login from './components/Login';
+import { Menu, Calendar, Clock, CheckCircle2, ClipboardList, Building2, Users, ChevronRight, LogOut } from 'lucide-react';
 import { getAppointments, initializeAuth, getCompanies, getAllPatients } from './utils/storage';
 import { Appointment, AppUser, Company, Patient } from './types';
 
 // Main Application Component
 const App: React.FC = () => {
   // --- Auth State ---
-  const [user] = useState<AppUser>({
-    id: 'default-admin',
-    firstName: 'Administrador',
-    cedula: '00000000',
-    username: 'admin',
-    role: 'Administrador',
-    createdAt: new Date().toISOString()
-  });
+  const [user, setUser] = useState<AppUser | null>(null);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<string>('dashboard');
@@ -44,8 +38,26 @@ const App: React.FC = () => {
   const [allPatients, setAllPatients] = useState<Patient[]>([]);
 
   useEffect(() => {
-    initializeAuth();
+    const init = async () => {
+      await initializeAuth();
+      const savedUser = localStorage.getItem('alex_consulting_logged_user');
+      if (savedUser) {
+        setUser(JSON.parse(savedUser));
+      }
+    };
+    init();
   }, []);
+
+  const handleLogin = (u: AppUser) => {
+    setUser(u);
+    localStorage.setItem('alex_consulting_logged_user', JSON.stringify(u));
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('alex_consulting_logged_user');
+    setCurrentView('dashboard');
+  };
 
   useEffect(() => {
     if (currentView === 'dashboard') {
@@ -86,7 +98,7 @@ const App: React.FC = () => {
       case 'empresas':
         return <CompaniesManagement />;
       case 'usuarios':
-        return <UsersManagement />;
+        return user.role === 'Administrador' ? <UsersManagement /> : <div className="p-8 text-center bg-red-50 text-red-600 rounded-xl border border-red-200 font-bold uppercase tracking-widest text-xs">Acceso Denegado. Solo administradores pueden gestionar usuarios.</div>;
       case 'cargos': 
         return <JobTitlesManagement />;
       case 'departamento':
@@ -230,6 +242,10 @@ const App: React.FC = () => {
     }
   };
 
+  if (!user) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex">
       <Sidebar 
@@ -239,6 +255,7 @@ const App: React.FC = () => {
             setCurrentView(view);
             setIsSidebarOpen(false);
         }} 
+        user={user}
       />
       
       <div className="flex-1 flex flex-col min-h-screen">
@@ -250,14 +267,24 @@ const App: React.FC = () => {
             <Menu className="w-6 h-6" />
           </button>
           
-          <div className="flex items-center gap-4 ml-auto">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-bold text-slate-800">{user.firstName}</p>
-              <p className="text-[10px] text-slate-500 uppercase font-medium">{user.role}</p>
+          <div className="flex items-center gap-6 ml-auto">
+            <div className="flex items-center gap-4">
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-bold text-slate-800">{user.firstName}</p>
+                <p className="text-[10px] text-slate-500 uppercase font-medium">{user.role}</p>
+              </div>
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold border border-blue-200">
+                {user.firstName.charAt(0)}
+              </div>
             </div>
-            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold border border-blue-200">
-              {user.firstName.charAt(0)}
-            </div>
+
+            <button 
+              onClick={handleLogout}
+              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+              title="Cerrar Sesión"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
         </header>
 

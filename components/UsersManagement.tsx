@@ -14,10 +14,26 @@ const UsersManagement: React.FC = () => {
     cedula: '',
     password: '',
     confirmPassword: '',
-    role: 'Asistente' as 'Administrador' | 'Asistente' | 'Médico'
+    role: 'Asistente' as 'Administrador' | 'Asistente' | 'Médico',
+    modules: [] as string[]
   };
 
   const [formData, setFormData] = useState(initialFormState);
+
+  const availableModules = [
+    { id: 'dashboard', label: 'Dashboard' },
+    { id: 'archivo', label: 'Archivo (Paciente, Médicos, etc)' },
+    { id: 'atencion', label: 'Atención Médica' },
+    { id: 'validacion-reposos', label: 'Validación de Reposos' },
+    { id: 'citas', label: 'Citas' },
+    { id: 'recipe', label: 'Recipe Electrónico' },
+    { id: 'reporte', label: 'Reporte' },
+    { id: 'diagnostica', label: 'Impression Diagnóstica' },
+    { id: 'informes', label: 'Informes Médicos' },
+    { id: 'sve', label: 'Sistemas de Vigilancia (SVE)' },
+    { id: 'datos', label: 'Carga Masiva de Datos' },
+    { id: 'configuracion', label: 'Configuración' },
+  ];
 
   useEffect(() => {
     loadData();
@@ -45,6 +61,15 @@ const UsersManagement: React.FC = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const toggleModule = (id: string) => {
+    const current = [...formData.modules];
+    if (current.includes(id)) {
+      setFormData({ ...formData, modules: current.filter(m => m !== id) });
+    } else {
+      setFormData({ ...formData, modules: [...current, id] });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -69,7 +94,8 @@ const UsersManagement: React.FC = () => {
             firstName: formData.firstName,
             cedula: formData.cedula,
             role: formData.role,
-            username: currentUsername
+            username: currentUsername,
+            modules: formData.modules
         };
         if (formData.password) {
             updates.password = formData.password;
@@ -83,7 +109,8 @@ const UsersManagement: React.FC = () => {
             cedula: formData.cedula,
             username: currentUsername,
             role: formData.role,
-            password: formData.password
+            password: formData.password,
+            modules: formData.modules
         });
         setMessage({ type: 'success', text: 'Usuario registrado correctamente' });
       }
@@ -102,6 +129,7 @@ const UsersManagement: React.FC = () => {
       firstName: u.firstName,
       cedula: u.cedula,
       role: u.role,
+      modules: u.modules || [],
       password: '',
       confirmPassword: ''
     });
@@ -193,6 +221,25 @@ const UsersManagement: React.FC = () => {
                   <option value="Asistente">Asistente</option>
                   <option value="Médico">Médico</option>
                 </select>
+              </div>
+
+              <div className="border-t border-slate-100 pt-4 mt-2">
+                 <h4 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-1">
+                    <Shield className="w-3 h-3" /> Módulos Permitidos
+                 </h4>
+                 <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                    {availableModules.map(module => (
+                      <label key={module.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-1 rounded transition-colors group">
+                        <input 
+                          type="checkbox"
+                          checked={formData.modules.includes(module.id)}
+                          onChange={() => toggleModule(module.id)}
+                          className="w-4 h-4 rounded text-slate-800 focus:ring-slate-500"
+                        />
+                        <span className="text-xs text-slate-600 group-hover:text-slate-900 transition-colors">{module.label}</span>
+                      </label>
+                    ))}
+                 </div>
               </div>
 
               <div className="border-t border-slate-100 pt-4 mt-2">

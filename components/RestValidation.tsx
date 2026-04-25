@@ -8,10 +8,11 @@ import {
   findPatientByCedula, 
   saveRestValidation, 
   getRestValidations,
-  deleteRestValidation
+  deleteRestValidation,
+  getDoctors
 } from '../utils/storage';
 import { pathologies, Pathology } from '../utils/nandaData';
-import { Patient, RestValidation as IRestValidation } from '../types';
+import { Patient, RestValidation as IRestValidation, Doctor } from '../types';
 
 const RestValidation: React.FC = () => {
   const [searchCedula, setSearchCedula] = useState('');
@@ -20,6 +21,7 @@ const RestValidation: React.FC = () => {
   const [currentPatient, setCurrentPatient] = useState<Patient | null>(null);
 
   const [restValidations, setRestValidations] = useState<IRestValidation[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loadingAction, setLoadingAction] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -30,16 +32,21 @@ const RestValidation: React.FC = () => {
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     pathology: '',
-    restDays: 0
+    restDays: 0,
+    selectedDoctorId: ''
   });
 
   useEffect(() => {
-    fetchRestValidations();
+    fetchInitialData();
   }, []);
 
-  const fetchRestValidations = async () => {
-    const data = await getRestValidations();
-    setRestValidations(data);
+  const fetchInitialData = async () => {
+    const [restData, docsData] = await Promise.all([getRestValidations(), getDoctors()]);
+    setRestValidations(restData);
+    setDoctors(docsData);
+    if (docsData.length > 0) {
+      setFormData(prev => ({ ...prev, selectedDoctorId: docsData[0].id }));
+    }
   };
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -115,17 +122,19 @@ const RestValidation: React.FC = () => {
         pathology: formData.pathology,
         restDays: Number(formData.restDays),
         restStartDate: formData.date,
-        restEndDate: getRestEndDate(formData.date, formData.restDays)
+        restEndDate: getRestEndDate(formData.date, formData.restDays),
+        doctorId: formData.selectedDoctorId
       }, currentPatient.company);
       setActionSuccess("Reposo validado correctamente.");
       setFormData({
         date: new Date().toISOString().split('T')[0],
         pathology: '',
-        restDays: 0
+        restDays: 0,
+        selectedDoctorId: doctors.length > 0 ? doctors[0].id : ''
       });
       setCurrentPatient(null);
       setSearchCedula('');
-      fetchRestValidations();
+      fetchInitialData();
       setTimeout(() => setActionSuccess(null), 3000);
     } catch (error) {
       alert("Error al guardar la validación.");
@@ -202,7 +211,20 @@ const RestValidation: React.FC = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Médico Validador</label>
+                <select 
+                  name="selectedDoctorId"
+                  required
+                  value={formData.selectedDoctorId}
+                  onChange={handleFormChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-bold text-blue-700"
+                >
+                  <option value="">-- Seleccionar --</option>
+                  {doctors.map(d => <option key={d.id} value={d.id}>{d.title} {d.firstName}</option>)}
+                </select>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Fecha del Reposo</label>
                 <input 

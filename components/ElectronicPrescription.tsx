@@ -206,10 +206,12 @@ const ElectronicPrescription: React.FC = () => {
                         Rx
                      </div>
                      <div>
-                        <h1 className="text-xl font-bold text-slate-900 uppercase tracking-wide">{patient.company}</h1>
+                        <h1 className="text-xl font-bold text-slate-900 uppercase tracking-wide">
+                            {selectedDoctor?.firstName || 'MÉDICO TRATANTE'}
+                        </h1>
                         <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold leading-tight">
-                          Servicio Medico<br/>
-                          {companies.find(c => c.name === patient.company)?.rif ? `RIF: ${companies.find(c => c.name === patient.company)?.rif}` : ''}
+                          Medicina Ocupacional<br/>
+                          {selectedDoctor?.cedula ? `RIF: ${selectedDoctor.cedula}` : ''}
                         </p>
                      </div>
                 </div>
@@ -242,7 +244,7 @@ const ElectronicPrescription: React.FC = () => {
                 <div className="flex-1 p-8 border-r border-slate-100 print:border-r-2 print:border-slate-200">
                     <div className="flex items-center gap-2 mb-6 text-blue-800 print:text-black">
                         <Pill className="w-5 h-5" />
-                        <h3 className="font-bold text-lg uppercase tracking-wider">Medicamentos</h3>
+                        <h3 className="font-bold text-lg uppercase tracking-wider">Recipe Médico</h3>
                     </div>
 
                     {/* Input Row (Screen Only) */}

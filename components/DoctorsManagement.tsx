@@ -26,9 +26,14 @@ const DoctorsManagement: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const data = await getDoctors();
-    setDoctors(data);
-    setLoading(false);
+    try {
+      const data = await getDoctors();
+      setDoctors(data);
+    } catch (error) {
+      console.error("Error loading doctors:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {

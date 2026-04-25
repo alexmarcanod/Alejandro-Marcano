@@ -1,6 +1,5 @@
 
 import { Patient, MedicalAttention, Prescription, Doctor, Company, AppUser, JobTitle, Appointment, Department, RestValidation } from '../types';
-import { supabase } from './supabase';
 
 const STORAGE_KEY_PATIENTS = 'alex_consulting_patients';
 const STORAGE_KEY_ATTENTIONS = 'alex_consulting_attentions';
@@ -90,54 +89,30 @@ const deleteItemInList = <T extends { id: string }>(key: string, id: string) => 
 };
 
 export const initializeAuth = async () => {
-  if (supabase) {
-    const { data: users, error } = await supabase.from('app_users').select('*');
-    if (error) {
-      console.error("Supabase error initializing auth:", error);
-    } else if (users.length === 0) {
-      const adminUser: AppUser = {
-        id: 'admin-default',
-        firstName: 'Administrador Principal',
-        cedula: '00000000',
-        username: 'admin',
-        password: 'admin',
-        role: 'Administrador',
-        createdAt: new Date().toISOString()
-      };
-      await supabase.from('app_users').insert(adminUser);
-    }
-    return;
-  }
+  // Always ensure a default admin exists in LOCAL STORAGE as a safety measure
+  const localUsers = getItems<AppUser>(STORAGE_KEY_USERS);
+  const localAdminExists = localUsers.some(u => u.username === 'administrador');
+  
+  const defaultAdmin: AppUser = {
+    id: 'admin-default',
+    firstName: 'Administrador Principal',
+    cedula: '00000000',
+    username: 'administrador',
+    password: 'admin1981',
+    role: 'Administrador',
+    modules: ['dashboard', 'archivo', 'atencion', 'validacion-reposos', 'citas', 'recipe', 'reporte', 'diagnostica', 'informes', 'sve', 'datos', 'configuracion'],
+    createdAt: new Date().toISOString()
+  };
 
-  const users = getItems<AppUser>(STORAGE_KEY_USERS);
-  if (users.length === 0) {
-    const adminUser: AppUser = {
-      id: 'admin-default',
-      firstName: 'Administrador Principal',
-      cedula: '00000000',
-      username: 'admin',
-      password: 'admin',
-      role: 'Administrador',
-      createdAt: new Date().toISOString()
-    };
-    localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify([adminUser]));
+  if (!localAdminExists) {
+    const updatedUsers = [...localUsers, defaultAdmin];
+    localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(updatedUsers));
   }
 };
 
 // --- Patients ---
 
 export const savePatientToDB = async (patientData: Omit<Patient, 'id' | 'createdAt'>): Promise<Patient> => {
-  if (supabase) {
-    const newPatient = {
-      ...patientData,
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString()
-    };
-    const { data, error } = await supabase.from('patients').insert(newPatient).select().single();
-    if (error) throw error;
-    return data as Patient;
-  }
-
   return new Promise((resolve, reject) => {
     try {
       setTimeout(() => {
@@ -160,73 +135,41 @@ export const savePatientToDB = async (patientData: Omit<Patient, 'id' | 'created
 };
 
 export const batchSavePatients = async (patients: Omit<Patient, 'id' | 'createdAt'>[]): Promise<{ created: number, updated: number }> => {
-    if (supabase) {
-        // Simple implementation: iterate and upsert based on cedula
-        let created = 0;
-        let updated = 0;
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const existingPatients = getItems<Patient>(STORAGE_KEY_PATIENTS);
+      let created = 0;
+      let updated = 0;
 
-        for (const pData of patients) {
-            const { data: existing } = await supabase.from('patients').select('id').eq('cedula', pData.cedula).maybeSingle();
-            if (existing) {
-                const { error } = await supabase.from('patients').update(pData).eq('id', existing.id);
-                if (!error) updated++;
-            } else {
-                const newPatient = {
-                    ...pData,
-                    id: crypto.randomUUID(),
-                    createdAt: new Date().toISOString()
-                };
-                const { error } = await supabase.from('patients').insert(newPatient);
-                if (!error) created++;
-            }
+      const updatedList = [...existingPatients];
+
+      patients.forEach(pData => {
+        const existingIndex = updatedList.findIndex(ep => ep.cedula === pData.cedula);
+        if (existingIndex !== -1) {
+          updatedList[existingIndex] = { 
+            ...updatedList[existingIndex], 
+            ...pData 
+          };
+          updated++;
+        } else {
+          updatedList.push({
+            ...pData,
+            id: crypto.randomUUID(),
+            createdAt: new Date().toISOString()
+          } as Patient);
+          created++;
         }
-        return { created, updated };
-    }
+      });
 
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const existingPatients = getItems<Patient>(STORAGE_KEY_PATIENTS);
-            let created = 0;
-            let updated = 0;
-
-            const updatedList = [...existingPatients];
-
-            patients.forEach(pData => {
-                const existingIndex = updatedList.findIndex(ep => ep.cedula === pData.cedula);
-                if (existingIndex !== -1) {
-                    updatedList[existingIndex] = { 
-                        ...updatedList[existingIndex], 
-                        ...pData 
-                    };
-                    updated++;
-                } else {
-                    updatedList.push({
-                        ...pData,
-                        id: crypto.randomUUID(),
-                        createdAt: new Date().toISOString()
-                    } as Patient);
-                    created++;
-                }
-            });
-
-            localStorage.setItem(STORAGE_KEY_PATIENTS, JSON.stringify(updatedList));
-            resolve({ created, updated });
-        }, 500);
-    });
+      localStorage.setItem(STORAGE_KEY_PATIENTS, JSON.stringify(updatedList));
+      resolve({ created, updated });
+    }, 500);
+  });
 };
 
 export const getPatientsFromDB = (): Patient[] => getItems<Patient>(STORAGE_KEY_PATIENTS);
 
 export const getAllPatients = async (): Promise<Patient[]> => {
-  if (supabase) {
-    const { data, error } = await supabase.from('patients').select('*').order('createdAt', { ascending: false });
-    if (error) {
-      console.error("Supabase error fetching patients:", error);
-      return getPatientsFromDB();
-    }
-    return data as Patient[];
-  }
-
   return new Promise((resolve) => {
     setTimeout(() => {
       resolve(getPatientsFromDB());
@@ -235,15 +178,6 @@ export const getAllPatients = async (): Promise<Patient[]> => {
 }
 
 export const findPatientByCedula = async (cedula: string): Promise<Patient | undefined> => {
-  if (supabase) {
-    const { data, error } = await supabase.from('patients').select('*').eq('cedula', cedula).maybeSingle();
-    if (error) {
-      console.error("Supabase error finding patient:", error);
-      return getPatientsFromDB().find(p => p.cedula === cedula);
-    }
-    return data as Patient | undefined;
-  }
-
   return new Promise((resolve) => {
     setTimeout(() => {
       const patients = getPatientsFromDB();
@@ -254,11 +188,6 @@ export const findPatientByCedula = async (cedula: string): Promise<Patient | und
 };
 
 export const updatePatient = async (id: string, updatedData: Partial<Patient>): Promise<Patient> => {
-  if (supabase) {
-    const { data, error } = await supabase.from('patients').update(updatedData).eq('id', id).select().single();
-    if (error) throw error;
-    return data as Patient;
-  }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const updated = updateItemInList<Patient>(STORAGE_KEY_PATIENTS, id, updatedData);
@@ -269,11 +198,6 @@ export const updatePatient = async (id: string, updatedData: Partial<Patient>): 
 };
 
 export const deletePatient = async (id: string): Promise<void> => {
-  if (supabase) {
-    const { error } = await supabase.from('patients').delete().eq('id', id);
-    if (error) throw error;
-    return;
-  }
   return new Promise((resolve) => {
     setTimeout(() => {
       deleteItemInList<Patient>(STORAGE_KEY_PATIENTS, id);
@@ -296,15 +220,6 @@ const getNextReportNumber = (companyName: string): string => {
 };
 
 export const getAllMedicalAttentions = async (): Promise<MedicalAttention[]> => {
-  if (supabase) {
-    const { data, error } = await supabase.from('medical_attentions').select('*').order('attentionDate', { ascending: false });
-    if (error) {
-      console.error("Supabase error fetching attentions:", error);
-      return getItems<MedicalAttention>(STORAGE_KEY_ATTENTIONS);
-    }
-    return data as MedicalAttention[];
-  }
-
   return new Promise((resolve) => {
     setTimeout(() => {
       resolve(getItems<MedicalAttention>(STORAGE_KEY_ATTENTIONS));
@@ -313,19 +228,6 @@ export const getAllMedicalAttentions = async (): Promise<MedicalAttention[]> => 
 };
 
 export const saveMedicalAttentionToDB = async (attentionData: Omit<MedicalAttention, 'id' | 'createdAt'>, companyName?: string): Promise<MedicalAttention> => {
-  if (supabase) {
-    const reportNumber = companyName ? getNextReportNumber(companyName) : undefined;
-    const newAttention = {
-      ...attentionData,
-      reportNumber,
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString()
-    };
-    const { data, error } = await supabase.from('medical_attentions').insert(newAttention).select().single();
-    if (error) throw error;
-    return data as MedicalAttention;
-  }
-
   return new Promise((resolve, reject) => {
     try {
       setTimeout(() => {
@@ -346,18 +248,6 @@ export const saveMedicalAttentionToDB = async (attentionData: Omit<MedicalAttent
 };
 
 export const getMedicalAttentionsByCedula = async (cedula: string): Promise<MedicalAttention[]> => {
-  if (supabase) {
-    const { data, error } = await supabase.from('medical_attentions')
-        .select('*').eq('patientCedula', cedula)
-        .order('attentionDate', { ascending: false });
-    if (error) {
-       console.error("Supabase error fetching attentions by cedula:", error);
-       return getItems<MedicalAttention>(STORAGE_KEY_ATTENTIONS).filter(a => a.patientCedula === cedula)
-        .sort((a, b) => new Date(b.attentionDate).getTime() - new Date(a.attentionDate).getTime());
-    }
-    return data as MedicalAttention[];
-  }
-
   return new Promise((resolve) => {
     setTimeout(() => {
       const attentions = getItems<MedicalAttention>(STORAGE_KEY_ATTENTIONS);
@@ -370,11 +260,6 @@ export const getMedicalAttentionsByCedula = async (cedula: string): Promise<Medi
 };
 
 export const updateMedicalAttention = async (id: string, updatedData: Partial<MedicalAttention>): Promise<MedicalAttention> => {
-  if (supabase) {
-    const { data, error } = await supabase.from('medical_attentions').update(updatedData).eq('id', id).select().single();
-    if (error) throw error;
-    return data as MedicalAttention;
-  }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const updated = updateItemInList<MedicalAttention>(STORAGE_KEY_ATTENTIONS, id, updatedData);
@@ -385,11 +270,6 @@ export const updateMedicalAttention = async (id: string, updatedData: Partial<Me
 };
 
 export const deleteMedicalAttention = async (id: string): Promise<void> => {
-  if (supabase) {
-    const { error } = await supabase.from('medical_attentions').delete().eq('id', id);
-    if (error) throw error;
-    return;
-  }
   return new Promise((resolve) => {
     setTimeout(() => {
       deleteItemInList<MedicalAttention>(STORAGE_KEY_ATTENTIONS, id);
@@ -400,16 +280,6 @@ export const deleteMedicalAttention = async (id: string): Promise<void> => {
 
 // --- Prescriptions ---
 export const savePrescriptionToDB = async (prescriptionData: Omit<Prescription, 'id' | 'createdAt'>): Promise<Prescription> => {
-  if (supabase) {
-    const newPrescription = {
-      ...prescriptionData,
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString()
-    };
-    const { data, error } = await supabase.from('prescriptions').insert(newPrescription).select().single();
-    if (error) throw error;
-    return data as Prescription;
-  }
   return new Promise((resolve, reject) => {
     try {
       setTimeout(() => {
@@ -429,24 +299,10 @@ export const savePrescriptionToDB = async (prescriptionData: Omit<Prescription, 
 
 // --- DOCTORS ---
 export const getDoctors = async (): Promise<Doctor[]> => {
-  if (supabase) {
-    const { data, error } = await supabase.from('doctors').select('*').order('firstName', { ascending: true });
-    if (error) {
-       console.error("Supabase error fetching doctors:", error);
-       return getItems<Doctor>(STORAGE_KEY_DOCTORS);
-    }
-    return data as Doctor[];
-  }
   return new Promise(resolve => setTimeout(() => resolve(getItems<Doctor>(STORAGE_KEY_DOCTORS)), 100));
 };
 
 export const saveDoctor = async (data: Omit<Doctor, 'id' | 'createdAt'>): Promise<Doctor> => {
-  if (supabase) {
-    const newItem = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-    const { data: saved, error } = await supabase.from('doctors').insert(newItem).select().single();
-    if (error) throw error;
-    return saved as Doctor;
-  }
   return new Promise(resolve => {
     setTimeout(() => {
       const newItem: Doctor = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
@@ -457,11 +313,6 @@ export const saveDoctor = async (data: Omit<Doctor, 'id' | 'createdAt'>): Promis
 };
 
 export const updateDoctor = async (id: string, data: Partial<Doctor>): Promise<Doctor> => {
-  if (supabase) {
-    const { data: updated, error } = await supabase.from('doctors').update(data).eq('id', id).select().single();
-    if (error) throw error;
-    return updated as Doctor;
-  }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const updated = updateItemInList<Doctor>(STORAGE_KEY_DOCTORS, id, data);
@@ -471,11 +322,6 @@ export const updateDoctor = async (id: string, data: Partial<Doctor>): Promise<D
 };
 
 export const deleteDoctor = async (id: string): Promise<void> => {
-  if (supabase) {
-    const { error } = await supabase.from('doctors').delete().eq('id', id);
-    if (error) throw error;
-    return;
-  }
   return new Promise(resolve => {
     deleteItemInList<Doctor>(STORAGE_KEY_DOCTORS, id);
     resolve();
@@ -484,24 +330,10 @@ export const deleteDoctor = async (id: string): Promise<void> => {
 
 // --- COMPANIES ---
 export const getCompanies = async (): Promise<Company[]> => {
-  if (supabase) {
-    const { data, error } = await supabase.from('companies').select('*').order('name', { ascending: true });
-    if (error) {
-       console.error("Supabase error fetching companies:", error);
-       return getItems<Company>(STORAGE_KEY_COMPANIES);
-    }
-    return data as Company[];
-  }
   return new Promise(resolve => setTimeout(() => resolve(getItems<Company>(STORAGE_KEY_COMPANIES)), 100));
 };
 
 export const saveCompany = async (data: Omit<Company, 'id' | 'createdAt'>): Promise<Company> => {
-  if (supabase) {
-    const newItem = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-    const { data: saved, error } = await supabase.from('companies').insert(newItem).select().single();
-    if (error) throw error;
-    return saved as Company;
-  }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const companies = getItems<Company>(STORAGE_KEY_COMPANIES);
@@ -516,11 +348,6 @@ export const saveCompany = async (data: Omit<Company, 'id' | 'createdAt'>): Prom
 };
 
 export const updateCompany = async (id: string, data: Partial<Company>): Promise<Company> => {
-  if (supabase) {
-    const { data: updated, error } = await supabase.from('companies').update(data).eq('id', id).select().single();
-    if (error) throw error;
-    return updated as Company;
-  }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const updated = updateItemInList<Company>(STORAGE_KEY_COMPANIES, id, data);
@@ -530,11 +357,6 @@ export const updateCompany = async (id: string, data: Partial<Company>): Promise
 };
 
 export const deleteCompany = async (id: string): Promise<void> => {
-  if (supabase) {
-    const { error } = await supabase.from('companies').delete().eq('id', id);
-    if (error) throw error;
-    return;
-  }
   return new Promise(resolve => {
     deleteItemInList<Company>(STORAGE_KEY_COMPANIES, id);
     resolve();
@@ -543,24 +365,10 @@ export const deleteCompany = async (id: string): Promise<void> => {
 
 // --- JOB TITLES (CARGOS) ---
 export const getJobTitles = async (): Promise<JobTitle[]> => {
-  if (supabase) {
-    const { data, error } = await supabase.from('job_titles').select('*').order('name', { ascending: true });
-    if (error) {
-       console.error("Supabase error fetching job titles:", error);
-       return getItems<JobTitle>(STORAGE_KEY_JOB_TITLES);
-    }
-    return data as JobTitle[];
-  }
   return new Promise(resolve => setTimeout(() => resolve(getItems<JobTitle>(STORAGE_KEY_JOB_TITLES)), 100));
 };
 
 export const saveJobTitle = async (data: Omit<JobTitle, 'id' | 'createdAt'>): Promise<JobTitle> => {
-  if (supabase) {
-    const newItem = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-    const { data: saved, error } = await supabase.from('job_titles').insert(newItem).select().single();
-    if (error) throw error;
-    return saved as JobTitle;
-  }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const titles = getItems<JobTitle>(STORAGE_KEY_JOB_TITLES);
@@ -575,11 +383,6 @@ export const saveJobTitle = async (data: Omit<JobTitle, 'id' | 'createdAt'>): Pr
 };
 
 export const updateJobTitle = async (id: string, data: Partial<JobTitle>): Promise<JobTitle> => {
-  if (supabase) {
-    const { data: updated, error } = await supabase.from('job_titles').update(data).eq('id', id).select().single();
-    if (error) throw error;
-    return updated as JobTitle;
-  }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const updated = updateItemInList<JobTitle>(STORAGE_KEY_JOB_TITLES, id, data);
@@ -589,11 +392,6 @@ export const updateJobTitle = async (id: string, data: Partial<JobTitle>): Promi
 };
 
 export const deleteJobTitle = async (id: string): Promise<void> => {
-  if (supabase) {
-    const { error } = await supabase.from('job_titles').delete().eq('id', id);
-    if (error) throw error;
-    return;
-  }
   return new Promise(resolve => {
     deleteItemInList<JobTitle>(STORAGE_KEY_JOB_TITLES, id);
     resolve();
@@ -602,24 +400,10 @@ export const deleteJobTitle = async (id: string): Promise<void> => {
 
 // --- DEPARTMENTS (DEPARTAMENTOS) ---
 export const getDepartments = async (): Promise<Department[]> => {
-  if (supabase) {
-    const { data, error } = await supabase.from('departments').select('*').order('name', { ascending: true });
-    if (error) {
-       console.error("Supabase error fetching departments:", error);
-       return getItems<Department>(STORAGE_KEY_DEPARTMENTS);
-    }
-    return data as Department[];
-  }
   return new Promise(resolve => setTimeout(() => resolve(getItems<Department>(STORAGE_KEY_DEPARTMENTS)), 100));
 };
 
 export const saveDepartment = async (data: Omit<Department, 'id' | 'createdAt'>): Promise<Department> => {
-  if (supabase) {
-    const newItem = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-    const { data: saved, error } = await supabase.from('departments').insert(newItem).select().single();
-    if (error) throw error;
-    return saved as Department;
-  }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const depts = getItems<Department>(STORAGE_KEY_DEPARTMENTS);
@@ -634,11 +418,6 @@ export const saveDepartment = async (data: Omit<Department, 'id' | 'createdAt'>)
 };
 
 export const updateDepartment = async (id: string, data: Partial<Department>): Promise<Department> => {
-  if (supabase) {
-    const { data: updated, error } = await supabase.from('departments').update(data).eq('id', id).select().single();
-    if (error) throw error;
-    return updated as Department;
-  }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const updated = updateItemInList<Department>(STORAGE_KEY_DEPARTMENTS, id, data);
@@ -648,11 +427,6 @@ export const updateDepartment = async (id: string, data: Partial<Department>): P
 };
 
 export const deleteDepartment = async (id: string): Promise<void> => {
-  if (supabase) {
-    const { error } = await supabase.from('departments').delete().eq('id', id);
-    if (error) throw error;
-    return;
-  }
   return new Promise(resolve => {
     deleteItemInList<Department>(STORAGE_KEY_DEPARTMENTS, id);
     resolve();
@@ -661,24 +435,10 @@ export const deleteDepartment = async (id: string): Promise<void> => {
 
 // --- USERS ---
 export const getUsers = async (): Promise<AppUser[]> => {
-  if (supabase) {
-    const { data, error } = await supabase.from('app_users').select('*').order('username', { ascending: true });
-    if (error) {
-       console.error("Supabase error fetching users:", error);
-       return getItems<AppUser>(STORAGE_KEY_USERS);
-    }
-    return data as AppUser[];
-  }
   return new Promise(resolve => setTimeout(() => resolve(getItems<AppUser>(STORAGE_KEY_USERS)), 100));
 };
 
 export const saveUser = async (data: Omit<AppUser, 'id' | 'createdAt'>): Promise<AppUser> => {
-  if (supabase) {
-    const newItem = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-    const { data: saved, error } = await supabase.from('app_users').insert(newItem).select().single();
-    if (error) throw error;
-    return saved as AppUser;
-  }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const users = getItems<AppUser>(STORAGE_KEY_USERS);
@@ -696,11 +456,6 @@ export const saveUser = async (data: Omit<AppUser, 'id' | 'createdAt'>): Promise
 };
 
 export const updateUser = async (id: string, data: Partial<AppUser>): Promise<AppUser> => {
-  if (supabase) {
-    const { data: updated, error } = await supabase.from('app_users').update(data).eq('id', id).select().single();
-    if (error) throw error;
-    return updated as AppUser;
-  }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const updated = updateItemInList<AppUser>(STORAGE_KEY_USERS, id, data);
@@ -710,11 +465,6 @@ export const updateUser = async (id: string, data: Partial<AppUser>): Promise<Ap
 };
 
 export const deleteUser = async (id: string): Promise<void> => {
-  if (supabase) {
-    const { error } = await supabase.from('app_users').delete().eq('id', id);
-    if (error) throw error;
-    return;
-  }
   return new Promise(resolve => {
     deleteItemInList<AppUser>(STORAGE_KEY_USERS, id);
     resolve();
@@ -723,24 +473,10 @@ export const deleteUser = async (id: string): Promise<void> => {
 
 // --- APPOINTMENTS (CITAS) ---
 export const getAppointments = async (): Promise<Appointment[]> => {
-  if (supabase) {
-    const { data, error } = await supabase.from('appointments').select('*').order('date', { ascending: true });
-    if (error) {
-       console.error("Supabase error fetching appointments:", error);
-       return getItems<Appointment>(STORAGE_KEY_APPOINTMENTS);
-    }
-    return data as Appointment[];
-  }
   return new Promise(resolve => setTimeout(() => resolve(getItems<Appointment>(STORAGE_KEY_APPOINTMENTS)), 100));
 };
 
 export const saveAppointment = async (data: Omit<Appointment, 'id' | 'createdAt'>): Promise<Appointment> => {
-  if (supabase) {
-    const newItem = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-    const { data: saved, error } = await supabase.from('appointments').insert(newItem).select().single();
-    if (error) throw error;
-    return saved as Appointment;
-  }
   return new Promise(resolve => {
     setTimeout(() => {
       const newItem: Appointment = { ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
@@ -751,11 +487,6 @@ export const saveAppointment = async (data: Omit<Appointment, 'id' | 'createdAt'
 };
 
 export const updateAppointment = async (id: string, data: Partial<Appointment>): Promise<Appointment> => {
-  if (supabase) {
-    const { data: updated, error } = await supabase.from('appointments').update(data).eq('id', id).select().single();
-    if (error) throw error;
-    return updated as Appointment;
-  }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const updated = updateItemInList<Appointment>(STORAGE_KEY_APPOINTMENTS, id, data);
@@ -765,11 +496,6 @@ export const updateAppointment = async (id: string, data: Partial<Appointment>):
 };
 
 export const deleteAppointment = async (id: string): Promise<void> => {
-  if (supabase) {
-    const { error } = await supabase.from('appointments').delete().eq('id', id);
-    if (error) throw error;
-    return;
-  }
   return new Promise(resolve => {
     deleteItemInList<Appointment>(STORAGE_KEY_APPOINTMENTS, id);
     resolve();
@@ -788,30 +514,10 @@ export const checkAvailability = async (date: string, time: string, excludeId?: 
 
 // --- REST VALIDATIONS (VALIDACION DE REPOSOS) ---
 export const getRestValidations = async (): Promise<RestValidation[]> => {
-  if (supabase) {
-    const { data, error } = await supabase.from('rest_validations').select('*').order('date', { ascending: false });
-    if (error) {
-       console.error("Supabase error fetching rest validations:", error);
-       return getItems<RestValidation>(STORAGE_KEY_REST_VALIDATIONS);
-    }
-    return data as RestValidation[];
-  }
   return new Promise(resolve => setTimeout(() => resolve(getItems<RestValidation>(STORAGE_KEY_REST_VALIDATIONS)), 100));
 };
 
 export const saveRestValidation = async (data: Omit<RestValidation, 'id' | 'createdAt'>, companyName?: string): Promise<RestValidation> => {
-  if (supabase) {
-    const reportNumber = companyName ? getNextReportNumber(companyName) : undefined;
-    const newItem = { 
-        ...data, 
-        id: crypto.randomUUID(), 
-        reportNumber,
-        createdAt: new Date().toISOString() 
-    };
-    const { data: saved, error } = await supabase.from('rest_validations').insert(newItem).select().single();
-    if (error) throw error;
-    return saved as RestValidation;
-  }
   return new Promise(resolve => {
     setTimeout(() => {
       const reportNumber = companyName ? getNextReportNumber(companyName) : undefined;
@@ -828,11 +534,6 @@ export const saveRestValidation = async (data: Omit<RestValidation, 'id' | 'crea
 };
 
 export const deleteRestValidation = async (id: string): Promise<void> => {
-  if (supabase) {
-    const { error } = await supabase.from('rest_validations').delete().eq('id', id);
-    if (error) throw error;
-    return;
-  }
   return new Promise(resolve => {
     deleteItemInList<RestValidation>(STORAGE_KEY_REST_VALIDATIONS, id);
     resolve();

@@ -20,21 +20,23 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
     try {
       const users = await getUsers();
-      // Simple Auth check (In production, use hashing)
-      const user = users.find(u => u.username === username && u.password === password);
+      
+      // Case insensitive username match and trim whitespace
+      const user = users.find(u => 
+        u.username.toLowerCase().trim() === username.toLowerCase().trim() && 
+        u.password === password
+      );
 
       if (user) {
-        // Simulate network delay for effect
-        setTimeout(() => {
-            onLogin(user);
-        }, 500);
+        onLogin(user);
       } else {
         setLoading(false);
-        setError('Credenciales inválidas. Intente nuevamente.');
+        setError('Usuario o contraseña incorrectos. Verifique sus credenciales.');
       }
     } catch (err) {
+      console.error("Login component error:", err);
       setLoading(false);
-      setError('Error al conectar con la base de datos local.');
+      setError('Error al intentar acceder. Verifique su conexión y vuelva a intentarlo.');
     }
   };
 

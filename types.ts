@@ -39,6 +39,7 @@ export interface Patient {
   workSchedule?: string; // Nuevo
   entryDate: string;
   employmentStatus: 'fijo' | 'contratado';
+  status: 'Activo' | 'Egreso';
   
   createdAt: string;
 }
@@ -182,5 +183,6 @@ export interface AppUser {
   username: string;
   password?: string;
   role: 'Administrador' | 'Asistente' | 'Médico';
+  modules?: string[];
   createdAt: string;
 }

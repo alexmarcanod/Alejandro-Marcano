@@ -12,7 +12,7 @@ const COLORS_SERIES = ['#1e4ed8', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#
 const SVEReport: React.FC = () => {
   const reportRef = useRef<HTMLDivElement>(null);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [reportType, setReportType] = useState<'monthly' | 'quarterly'>('quarterly');
+  const [reportType, setReportType] = useState<'monthly' | 'quarterly' | 'annual'>('quarterly');
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter>('I');
   const [allPatients, setAllPatients] = useState<Patient[]>([]);
@@ -93,29 +93,34 @@ const SVEReport: React.FC = () => {
   };
 
   // --- Data Scoping ---
-  const patientsInScope = useMemo(() => {
+  const allCompanyPatients = useMemo(() => {
       if (!selectedCompanyName) return [];
       return allPatients.filter(p => p.company === selectedCompanyName);
   }, [allPatients, selectedCompanyName]);
 
+  const activePatients = useMemo(() => {
+    return allCompanyPatients.filter(p => !p.status || p.status === 'Activo');
+  }, [allCompanyPatients]);
+
   const attentionsInScope = useMemo(() => {
-    const patientCedulas = new Set(patientsInScope.map(p => p.cedula));
+    const patientCedulas = new Set(allCompanyPatients.map(p => p.cedula));
     return allAttentions.filter(a => patientCedulas.has(a.patientCedula));
-  }, [allAttentions, patientsInScope]);
+  }, [allAttentions, allCompanyPatients]);
 
   const restValidationsInScope = useMemo(() => {
-    const patientCedulas = new Set(patientsInScope.map(p => p.cedula));
+    const patientCedulas = new Set(allCompanyPatients.map(p => p.cedula));
     return allRestValidations.filter(r => patientCedulas.has(r.patientCedula));
-  }, [allRestValidations, patientsInScope]);
+  }, [allRestValidations, allCompanyPatients]);
 
   const getRangeText = () => {
     if (reportType === 'quarterly') {
       return getQuarterRangeText(selectedQuarter, selectedYear);
-    } else {
+    } else if (reportType === 'monthly') {
       const monthName = getMonthName(selectedMonth);
       const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-      const monthNameCapitalized = monthName.charAt(0).toUpperCase() + monthName.slice(1);
       return `Del 01 de ${monthName} al ${lastDay} de ${monthName} de ${selectedYear}`;
+    } else {
+      return `Del 01 de enero al 31 de diciembre de ${selectedYear}`;
     }
   };
 
@@ -125,7 +130,7 @@ const SVEReport: React.FC = () => {
       return attDate.getFullYear() === year && attDate.getMonth() === monthIdx;
     });
     const treatedCedulas = new Set(monthlyAttentions.map(a => a.patientCedula));
-    return patientsInScope.filter(p => treatedCedulas.has(p.cedula));
+    return allCompanyPatients.filter(p => treatedCedulas.has(p.cedula));
   };
 
   const getAgeGroupStatsForList = (list: Patient[]) => {
@@ -140,30 +145,30 @@ const SVEReport: React.FC = () => {
 
   const jobDistribution = useMemo(() => {
     const distribution: Record<string, number> = {};
-    patientsInScope.forEach(p => {
+    activePatients.forEach(p => {
       const job = p.jobTitle || 'SIN CARGO ASIGNADO';
       distribution[job] = (distribution[job] || 0) + 1;
     });
     return Object.entries(distribution).sort((a, b) => b[1] - a[1]);
-  }, [patientsInScope]);
+  }, [activePatients]);
 
   const departmentDistribution = useMemo(() => {
     const distribution: Record<string, number> = {};
-    patientsInScope.forEach(p => {
+    activePatients.forEach(p => {
       const dept = p.department || 'SIN DEPARTAMENTO ASIGNADO';
       distribution[dept] = (distribution[dept] || 0) + 1;
     });
     return Object.entries(distribution).sort((a, b) => b[1] - a[1]);
-  }, [patientsInScope]);
+  }, [activePatients]);
 
   const genderDistribution = useMemo(() => {
-    const male = patientsInScope.filter(p => p.gender === 'Masculino').length;
-    const female = patientsInScope.filter(p => p.gender === 'Femenino').length;
+    const male = activePatients.filter(p => p.gender === 'Masculino').length;
+    const female = activePatients.filter(p => p.gender === 'Femenino').length;
     return [
       { name: 'Masculino', value: male, fill: '#1d4ed8' },
       { name: 'Femenino', value: female, fill: '#db2777' }
     ];
-  }, [patientsInScope]);
+  }, [activePatients]);
 
   const ageGroupDistribution = useMemo(() => {
     const groups: Record<string, number> = {
@@ -174,7 +179,7 @@ const SVEReport: React.FC = () => {
       '46-55': 0,
       '55+': 0
     };
-    patientsInScope.forEach(p => {
+    activePatients.forEach(p => {
       const age = calculateAge(p.birthDate);
       const group = getAgeGroup(age);
       groups[group] = (groups[group] || 0) + 1;
@@ -184,7 +189,7 @@ const SVEReport: React.FC = () => {
       value,
       fill: COLORS_SERIES[index % COLORS_SERIES.length]
     }));
-  }, [patientsInScope]);
+  }, [activePatients]);
 
   const currentCompany = useMemo(() => {
       return companies.find(c => c.name === selectedCompanyName);
@@ -201,10 +206,15 @@ const SVEReport: React.FC = () => {
         const d = new Date(att.attentionDate + 'T00:00:00');
         return d.getFullYear() === selectedYear && months.includes(d.getMonth());
       });
-    } else {
+    } else if (reportType === 'monthly') {
       return attentionsInScope.filter(att => {
         const d = new Date(att.attentionDate + 'T00:00:00');
         return d.getFullYear() === selectedYear && d.getMonth() === selectedMonth;
+      });
+    } else {
+      return attentionsInScope.filter(att => {
+        const d = new Date(att.attentionDate + 'T00:00:00');
+        return d.getFullYear() === selectedYear;
       });
     }
   }, [attentionsInScope, selectedYear, selectedQuarter, reportType, selectedMonth]);
@@ -216,10 +226,15 @@ const SVEReport: React.FC = () => {
         const d = new Date(r.date + 'T00:00:00');
         return d.getFullYear() === selectedYear && months.includes(d.getMonth());
       });
-    } else {
+    } else if (reportType === 'monthly') {
       return restValidationsInScope.filter(r => {
         const d = new Date(r.date + 'T00:00:00');
         return d.getFullYear() === selectedYear && d.getMonth() === selectedMonth;
+      });
+    } else {
+      return restValidationsInScope.filter(r => {
+        const d = new Date(r.date + 'T00:00:00');
+        return d.getFullYear() === selectedYear;
       });
     }
   }, [restValidationsInScope, selectedYear, selectedQuarter, reportType, selectedMonth]);
@@ -437,7 +452,9 @@ const SVEReport: React.FC = () => {
     link.href = url;
     const filename = reportType === 'quarterly' 
       ? `SVE_${selectedCompanyName || 'Empresa'}_T${selectedQuarter}_${selectedYear}.doc`
-      : `SVE_${selectedCompanyName || 'Empresa'}_M${selectedMonth + 1}_${selectedYear}.doc`;
+      : reportType === 'monthly'
+        ? `SVE_${selectedCompanyName || 'Empresa'}_M${selectedMonth + 1}_${selectedYear}.doc`
+        : `SVE_${selectedCompanyName || 'Empresa'}_Anual_${selectedYear}.doc`;
     link.download = filename;
     document.body.appendChild(link);
     link.click();
@@ -510,7 +527,7 @@ const SVEReport: React.FC = () => {
             Resumen Gestión de Medicina Ocupacional ({currentCompany?.name || 'Empresa'})
           </h2>
           <h3 className="text-[16px] font-bold text-center mb-12 underline decoration-2 underline-offset-4">
-            {reportType === 'quarterly' ? `Trimestre ${selectedQuarter}` : `Mes de ${getMonthName(selectedMonth)}`} ({selectedYear})
+            {reportType === 'quarterly' ? `Trimestre ${selectedQuarter}` : reportType === 'monthly' ? `Mes de ${getMonthName(selectedMonth)}` : 'Anual'} ({selectedYear})
           </h3>
 
           <div className="space-y-8 text-[12pt] leading-[1.5] text-justify w-full max-w-3xl">
@@ -610,13 +627,14 @@ const SVEReport: React.FC = () => {
             </div>
             <div>
                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tipo</label>
-               <select value={reportType} onChange={(e) => setReportType(e.target.value as 'monthly' | 'quarterly')} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white">
+               <select value={reportType} onChange={(e) => setReportType(e.target.value as 'monthly' | 'quarterly' | 'annual')} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white">
                    <option value="quarterly">Trimestral</option>
                    <option value="monthly">Mensual</option>
+                   <option value="annual">Anual</option>
                </select>
             </div>
             <div>
-               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{reportType === 'quarterly' ? 'Trimestre' : 'Mes'}</label>
+               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{reportType === 'quarterly' ? 'Trimestre' : reportType === 'monthly' ? 'Mes' : 'Período'}</label>
                {reportType === 'quarterly' ? (
                  <select value={selectedQuarter} onChange={(e) => setSelectedQuarter(e.target.value as Quarter)} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white">
                      <option value="I">I (Ene-Mar)</option>
@@ -624,12 +642,16 @@ const SVEReport: React.FC = () => {
                      <option value="III">III (Jul-Sep)</option>
                      <option value="IV">IV (Oct-Dic)</option>
                  </select>
-               ) : (
+               ) : reportType === 'monthly' ? (
                  <select value={selectedMonth} onChange={(e) => setSelectedMonth(parseInt(e.target.value))} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white">
                      {Array.from({ length: 12 }).map((_, i) => (
                        <option key={i} value={i}>{getMonthName(i)}</option>
                      ))}
                  </select>
+               ) : (
+                 <div className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-slate-50 text-slate-500 font-medium">
+                   Ene - Dic
+                 </div>
                )}
             </div>
             <div>
@@ -653,7 +675,7 @@ const SVEReport: React.FC = () => {
       {!selectedCompanyName ? (
           <div className="text-center py-20 text-slate-400 animate-in fade-in">
               <TableIcon className="w-16 h-16 mx-auto mb-4 opacity-20" />
-              <p>Seleccione una empresa y un médico para visualizar el reporte {reportType === 'quarterly' ? 'trimestral' : 'mensual'}.</p>
+              <p>Seleccione una empresa y un médico para visualizar el reporte {reportType === 'quarterly' ? 'trimestral' : reportType === 'monthly' ? 'mensual' : 'anual'}.</p>
           </div>
       ) : (
           <div ref={reportRef} className="print-report bg-white p-8 md:p-12 shadow-2xl rounded-xl border border-slate-200 print:shadow-none print:border-0 print:p-0 font-['Arial'] text-[12pt] leading-[1.5]">
@@ -714,7 +736,7 @@ const SVEReport: React.FC = () => {
                     <tfoot>
                         <tr className="bg-total border-t-2 border-slate-900">
                             <td className="text-right uppercase font-black">Total General de Trabajadores:</td>
-                            <td className="text-center text-lg font-black">{patientsInScope.length}</td>
+                            <td className="text-center text-lg font-black">{activePatients.length}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -743,7 +765,7 @@ const SVEReport: React.FC = () => {
                     <tfoot>
                         <tr className="bg-total border-t-2 border-slate-900">
                             <td className="text-right uppercase font-black">Total General de Trabajadores:</td>
-                            <td className="text-center text-lg font-black">{patientsInScope.length}</td>
+                            <td className="text-center text-lg font-black">{activePatients.length}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -765,7 +787,7 @@ const SVEReport: React.FC = () => {
                                         <td className="font-bold">{gender.name.toUpperCase()}</td>
                                         <td className="text-center font-black">{gender.value}</td>
                                         <td className="text-center">
-                                            {patientsInScope.length > 0 ? ((gender.value / patientsInScope.length) * 100).toFixed(1) : 0}%
+                                            {activePatients.length > 0 ? ((gender.value / activePatients.length) * 100).toFixed(1) : 0}%
                                         </td>
                                     </tr>
                                 ))}
@@ -773,14 +795,14 @@ const SVEReport: React.FC = () => {
                             <tfoot>
                                 <tr className="bg-total">
                                     <td className="uppercase">Total Nómina:</td>
-                                    <td className="text-center font-black">{patientsInScope.length}</td>
+                                    <td className="text-center font-black">{activePatients.length}</td>
                                     <td className="text-center">100%</td>
                                 </tr>
                                 <tr className="bg-total border-t border-slate-300">
                                     <td className="uppercase">Personas con Discapacidad:</td>
-                                    <td className="text-center font-black">{patientsInScope.filter(p => p.hasDisability).length}</td>
+                                    <td className="text-center font-black">{activePatients.filter(p => p.hasDisability).length}</td>
                                     <td className="text-center">
-                                        {patientsInScope.length > 0 ? ((patientsInScope.filter(p => p.hasDisability).length / patientsInScope.length) * 100).toFixed(1) : 0}%
+                                        {activePatients.length > 0 ? ((activePatients.filter(p => p.hasDisability).length / activePatients.length) * 100).toFixed(1) : 0}%
                                     </td>
                                 </tr>
                             </tfoot>
@@ -823,7 +845,7 @@ const SVEReport: React.FC = () => {
                                         <td className="font-bold">{group.name}</td>
                                         <td className="text-center font-black">{group.value}</td>
                                         <td className="text-center">
-                                            {patientsInScope.length > 0 ? ((group.value / patientsInScope.length) * 100).toFixed(1) : 0}%
+                                            {activePatients.length > 0 ? ((group.value / activePatients.length) * 100).toFixed(1) : 0}%
                                         </td>
                                     </tr>
                                 ))}
@@ -831,14 +853,14 @@ const SVEReport: React.FC = () => {
                             <tfoot>
                                 <tr className="bg-total">
                                     <td className="uppercase">Total Nómina:</td>
-                                    <td className="text-center font-black">{patientsInScope.length}</td>
+                                    <td className="text-center font-black">{activePatients.length}</td>
                                     <td className="text-center">100%</td>
                                 </tr>
                                 <tr className="bg-total border-t border-slate-300">
                                     <td className="uppercase">Personas con Discapacidad:</td>
-                                    <td className="text-center font-black">{patientsInScope.filter(p => p.hasDisability).length}</td>
+                                    <td className="text-center font-black">{activePatients.filter(p => p.hasDisability).length}</td>
                                     <td className="text-center">
-                                        {patientsInScope.length > 0 ? ((patientsInScope.filter(p => p.hasDisability).length / patientsInScope.length) * 100).toFixed(1) : 0}%
+                                        {activePatients.length > 0 ? ((activePatients.filter(p => p.hasDisability).length / activePatients.length) * 100).toFixed(1) : 0}%
                                     </td>
                                 </tr>
                             </tfoot>
@@ -878,7 +900,7 @@ const SVEReport: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {(reportType === 'quarterly' ? getQuarterMonths(selectedQuarter) : [selectedMonth]).map(m => {
+                        {(reportType === 'quarterly' ? getQuarterMonths(selectedQuarter) : reportType === 'monthly' ? [selectedMonth] : Array.from({length: 12}, (_, i) => i)).map(m => {
                             const activeInMonth = getPatientsActiveInMonth(m, selectedYear);
                             return (
                                 <tr key={m}>
@@ -906,7 +928,7 @@ const SVEReport: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {(reportType === 'quarterly' ? getQuarterMonths(selectedQuarter) : [selectedMonth]).map(m => {
+                        {(reportType === 'quarterly' ? getQuarterMonths(selectedQuarter) : reportType === 'monthly' ? [selectedMonth] : Array.from({length: 12}, (_, i) => i)).map(m => {
                             const activeInMonth = getPatientsActiveInMonth(m, selectedYear);
                             const monthlyAgeStats = getAgeGroupStatsForList(activeInMonth);
                             return (
@@ -1065,7 +1087,7 @@ const SVEReport: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="section-title">4.2.- Análisis de las 3 Primeras Causas de Morbilidad del {reportType === 'quarterly' ? `Trimestre (T${selectedQuarter})` : `Mes (${getMonthName(selectedMonth)})`}</div>
+                <div className="section-title">4.2.- Análisis de las 3 Primeras Causas de Morbilidad del {reportType === 'quarterly' ? `Trimestre (T${selectedQuarter})` : reportType === 'monthly' ? `Mes (${getMonthName(selectedMonth)})` : 'Año'}</div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
                         <table className="text-[9px]">
@@ -1225,7 +1247,7 @@ const SVEReport: React.FC = () => {
                                 <td className="font-bold">{a.medicalReferral}</td>
                                 <td>{a.diagnosis}</td>
                             </tr>
-                        )) : <tr><td colSpan={3} className="text-center italic text-slate-400 py-2">No se realizaron referencias en el {reportType === 'quarterly' ? 'trimestre' : 'mes'}.</td></tr>}
+                        )) : <tr><td colSpan={3} className="text-center italic text-slate-400 py-2">No se realizaron referencias en el {reportType === 'quarterly' ? 'trimestre' : reportType === 'monthly' ? 'mes' : 'anual'}.</td></tr>}
                     </tbody>
                 </table>
 
@@ -1384,8 +1406,8 @@ const SVEReport: React.FC = () => {
             <div className="page-break">
                 <div className="section-title">8.- Registro de Personas con discapacidad atendidos</div>
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded text-[10px]">
-                    Total de trabajadores con discapacidad en nómina: <strong>{patientsInScope.filter(p => p.hasDisability).length}</strong>. <br/>
-                    Atenciones realizadas a este group en el {reportType === 'quarterly' ? 'trimestre' : 'mes'}: <strong>{quarterAttentions.filter(a => allPatients.find(p => p.cedula === a.patientCedula)?.hasDisability).length}</strong>.
+                    Total de trabajadores con discapacidad en nómina: <strong>{activePatients.filter(p => p.hasDisability).length}</strong>. <br/>
+                    Atenciones realizadas a este grupo en el {reportType === 'quarterly' ? 'trimestre' : reportType === 'monthly' ? 'mes' : 'anual'}: <strong>{quarterAttentions.filter(a => allCompanyPatients.find(p => p.cedula === a.patientCedula)?.hasDisability).length}</strong>.
                 </div>
 
                 <div className="section-title">9.- Factores de riesgo y procesos peligrosos</div>
@@ -1414,7 +1436,7 @@ const SVEReport: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4 mt-2">
                     <div className="p-3 border border-slate-300 rounded text-center">
                         <p className="text-[9px] font-bold text-slate-500 uppercase">Índice de Frecuencia (IF)</p>
-                        <p className="text-lg font-black">{morbidityDetails.accTrabajo.length > 0 ? ((morbidityDetails.accTrabajo.length * 1000000) / (patientsInScope.length * 500)).toFixed(2) : '0.00'}</p>
+                        <p className="text-lg font-black">{morbidityDetails.accTrabajo.length > 0 ? ((morbidityDetails.accTrabajo.length * 1000000) / (activePatients.length * 500)).toFixed(2) : '0.00'}</p>
                     </div>
                     <div className="p-3 border border-slate-300 rounded text-center">
                         <p className="text-[9px] font-bold text-slate-500 uppercase">Índice de Gravedad (IG)</p>

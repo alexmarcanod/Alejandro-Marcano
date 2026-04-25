@@ -22,11 +22,16 @@ const DepartmentsManagement: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const data = await getDepartments();
-    // Sort alphabetically
-    const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
-    setDepartments(sorted);
-    setLoading(false);
+    try {
+      const data = await getDepartments();
+      // Sort alphabetically
+      const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
+      setDepartments(sorted);
+    } catch (error) {
+      console.error("Error loading departments:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

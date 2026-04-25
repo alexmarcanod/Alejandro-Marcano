@@ -30,10 +30,16 @@ const CompaniesManagement: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [compsData, patsData] = await Promise.all([getCompanies(), getAllPatients()]);
-    setCompanies(compsData);
-    setPatients(patsData);
-    setLoading(false);
+    try {
+      const [compsData, patsData] = await Promise.all([getCompanies(), getAllPatients()]);
+      setCompanies(compsData);
+      setPatients(patsData);
+    } catch (error: any) {
+      console.error("Error loading data:", error);
+      setMessage({ type: 'error', text: 'Error al cargar los datos.' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getWorkerCount = (companyName: string) => {
@@ -85,11 +91,16 @@ const CompaniesManagement: React.FC = () => {
 
   const confirmDelete = async () => {
     if (showDeleteConfirm) {
-      await deleteCompany(showDeleteConfirm);
-      setShowDeleteConfirm(null);
-      loadData();
-      setMessage({ type: 'success', text: 'Empresa eliminada correctamente' });
-      setTimeout(() => setMessage(null), 3000);
+      try {
+        await deleteCompany(showDeleteConfirm);
+        setMessage({ type: 'success', text: 'Empresa eliminada correctamente' });
+        loadData();
+      } catch (error: any) {
+        setMessage({ type: 'error', text: 'Error al eliminar la empresa' });
+      } finally {
+        setShowDeleteConfirm(null);
+        setTimeout(() => setMessage(null), 3000);
+      }
     }
   };
 
